@@ -3,6 +3,7 @@ import { Schema, model, models, Types } from "mongoose";
 const StudentClassHistorySchema = new Schema(
   {
     schoolId: { type: Types.ObjectId, ref: "School", required: true },
+    academicYearId: { type: Types.ObjectId, ref: "AcademicYear", required: true },
     studentId: { type: Types.ObjectId, ref: "User", required: true },
     classId: { type: Types.ObjectId, ref: "Class", required: true },
     session: { type: String, required: true },

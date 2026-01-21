@@ -23,7 +23,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const { classId, session } = await req.json();
+  const { classId, session, academicYearId } = await req.json();
+
+  if (!academicYearId) {
+    return NextResponse.json(
+      { error: "Academic year ID is required" },
+      { status: 400 }
+    );
+  }
 
   const cls = await Class.findById(classId);
   const students = await Student.find({ currentClassId: classId });
@@ -41,6 +48,7 @@ export async function POST(req: Request) {
 
     await StudentClassHistory.create({
       schoolId: admin.schoolId,
+      academicYearId,
       studentId: student._id,
       classId,
       session,
@@ -50,15 +58,21 @@ export async function POST(req: Request) {
       repeated: !promoted
     });
 
-    if (promoted && NEXT_CLASS[cls.level]) {
-      const nextClass = await Class.findOne({
-        schoolId: admin.schoolId,
-        level: NEXT_CLASS[cls.level],
-        arm: cls.arm
-      });
-      if (nextClass) {
-        student.currentClassId = nextClass._id;
-        await student.save();
+    if (promoted) {
+      if (cls.level === "SSS3") {
+        // Student has graduated - you might want to set a graduated flag
+        // For now, we'll leave them in SSS3
+        // Future: Add a 'graduated' field to Student model
+      } else if (NEXT_CLASS[cls.level]) {
+        const nextClass = await Class.findOne({
+          schoolId: admin.schoolId,
+          level: NEXT_CLASS[cls.level],
+          arm: cls.arm
+        });
+        if (nextClass) {
+          student.currentClassId = nextClass._id;
+          await student.save();
+        }
       }
     }
   }

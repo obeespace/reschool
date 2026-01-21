@@ -14,13 +14,24 @@ export async function GET(req: Request) {
   }
 
   const students = await Student.find({ parentId: parent.id });
-  const classId = students[0]?.currentClassId;
+  
+  if (students.length === 0) {
+    return NextResponse.json({ rankings: [] });
+  }
 
-  const scores = await Score.aggregate([
-    { $match: { classId } },
-    { $group: { _id: "$studentId", total: { $sum: "$total" } } },
-    { $sort: { total: -1 } }
-  ]);
+  // Get rankings for each unique class
+  const classIds = [...new Set(students.map(s => s.currentClassId.toString()))];
+  const rankings: any = {};
 
-  return NextResponse.json({ ranking: scores });
+  for (const classId of classIds) {
+    const scores = await Score.aggregate([
+      { $match: { classId: classId } },
+      { $group: { _id: "$studentId", total: { $sum: "$total" } } },
+      { $sort: { total: -1 } }
+    ]);
+    
+    rankings[classId] = scores;
+  }
+
+  return NextResponse.json({ rankings });
 }

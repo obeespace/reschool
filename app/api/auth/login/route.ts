@@ -5,19 +5,63 @@ import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  await connectDB();
-  const { email, password } = await req.json();
+  try {
+    await connectDB();
+    const { email, password } = await req.json();
 
-  const user = await User.findOne({ email });
-  if (!user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required" },
+        { status: 400 }
+      );
+    }
 
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!isMatch) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    const user = await User.findOne({ email });
+    if (!user) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
 
-  const token = jwt.sign(
-    { id: user._id.toString(), role: user.role, fullName: user.fullName, schoolId: user.schoolId.toString() },
-    process.env.JWT_SECRET as string
-  );
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
 
-  return NextResponse.json({ token });
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      console.error("JWT_SECRET is not defined in environment variables");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    const token = jwt.sign(
+      {
+        id: user._id.toString(),
+        role: user.role,
+        fullName: user.fullName,
+        schoolId: user.schoolId.toString(),
+        email: user.email
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return NextResponse.json({
+      token,
+      user: {
+        id: user._id.toString(),
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        schoolId: user.schoolId.toString()
+      }
+    });
+  } catch (error: any) {
+    console.error("Login error:", error);
+    return NextResponse.json(
+      { error: error.message || "Login failed" },
+      { status: 500 }
+    );
+  }
 }

@@ -6,30 +6,53 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  await connectDB();
-  const { name, email, password } = await req.json();
+  try {
+    await connectDB();
+    const { name, email, password } = await req.json();
 
-  const schoolId = new mongoose.Types.ObjectId();
+    if (!name || !email || !password) {
+      return NextResponse.json(
+        { error: "Name, email, and password are required" },
+        { status: 400 }
+      );
+    }
 
-  const passwordHash = await bcrypt.hash(password, 10);
-  const adminUser = await User.create({
-    fullName: `${name} Admin`,
-    email,
-    passwordHash,
-    role: "ADMIN",
-    schoolId
-  });
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "Email already registered" },
+        { status: 400 }
+      );
+    }
 
-  const slug = name.toLowerCase().replace(/\s/g, "-");
-  const school = await School.create({
-    _id: schoolId,
-    name,
-    domainSlug: slug,
-    adminUserId: adminUser._id
-  });
+    const schoolId = new mongoose.Types.ObjectId();
 
-  return NextResponse.json({
-    schoolId: school._id.toString(),
-    adminUserId: adminUser._id.toString()
-  });
+    const passwordHash = await bcrypt.hash(password, 10);
+    const adminUser = await User.create({
+      fullName: `${name} Admin`,
+      email,
+      passwordHash,
+      role: "ADMIN",
+      schoolId
+    });
+
+    const slug = name.toLowerCase().replace(/\s/g, "-");
+    const school = await School.create({
+      _id: schoolId,
+      name,
+      domainSlug: slug,
+      adminUserId: adminUser._id
+    });
+
+    return NextResponse.json({
+      schoolId: school._id.toString(),
+      adminUserId: adminUser._id.toString()
+    });
+  } catch (error: any) {
+    console.error("School registration error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to register school" },
+      { status: 500 }
+    );
+  }
 }

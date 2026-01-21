@@ -12,6 +12,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
+  // TODO: Integrate with actual payment gateway (Paystack/Flutterwave)
+  // This should verify the payment reference with the gateway
+  // const { reference } = await req.json();
+  // const paymentVerified = await verifyPaymentWithGateway(reference);
+
   const sub = await Subscription.findOne({ 
     schoolId: admin.schoolId,
     status: "INACTIVE"

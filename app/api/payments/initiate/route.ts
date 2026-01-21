@@ -35,6 +35,14 @@ export async function POST(req: Request) {
 
   const reference = `IGB-${Date.now()}`;
 
+  // TODO: Integrate with payment gateway
+  // Instead of creating subscription here, redirect to payment gateway
+  // const paymentUrl = await initiatePaymentWithGateway({
+  //   reference,
+  //   amount: PLAN_AMOUNT[plan],
+  //   email: admin.email
+  // });
+
   await Subscription.create({
     schoolId: admin.schoolId,
     plan,
