@@ -6,6 +6,7 @@ export interface IClass extends Document {
   arm: string;
   classTeacherId?: mongoose.Types.ObjectId | null;
   studentIds: mongoose.Types.ObjectId[];
+  subjectIds: mongoose.Types.ObjectId[]; // Subjects taught in this class
 }
 
 const ClassSchema = new Schema<IClass>(
@@ -14,7 +15,8 @@ const ClassSchema = new Schema<IClass>(
     level: { type: String, enum: ["JSS1","JSS2","JSS3","SSS1","SSS2","SSS3"], required: true },
     arm: { type: String, enum: ["A","B","C"], required: true },
     classTeacherId: { type: Schema.Types.ObjectId, ref: "User", default: null },
-    studentIds: [{ type: Schema.Types.ObjectId, ref: "User" }]
+    studentIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    subjectIds: [{ type: Schema.Types.ObjectId, ref: "Subject" }]
   },
   { timestamps: true }
 );

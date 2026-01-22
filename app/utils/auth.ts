@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
 export interface ITokenPayload {
-  id: string;
+  userId: string; // User's _id from database
   fullName: string;
   role: "ADMIN" | "TEACHER" | "PARENT";
   schoolId: string;
