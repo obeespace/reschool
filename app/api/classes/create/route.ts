@@ -12,7 +12,27 @@ export async function POST(req: Request) {
   if (!allowRoles(user, ["ADMIN"])) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
   const { level, arm } = await req.json();
-  const newClass = await Class.create({ level, arm, schoolId: user!.schoolId });
+
+  // Check if class already exists
+  const existingClass = await Class.findOne({
+    schoolId: user!.schoolId,
+    level,
+    arm
+  });
+
+  if (existingClass) {
+    return NextResponse.json({ 
+      error: `Class ${level} ${arm} already exists` 
+    }, { status: 400 });
+  }
+
+  const name = `${level} ${arm}`;
+  const newClass = await Class.create({ 
+    level, 
+    arm, 
+    name,
+    schoolId: user!.schoolId 
+  });
 
   await CurriculumSuggestion.create({
     schoolId: user!.schoolId,
@@ -25,5 +45,9 @@ export async function POST(req: Request) {
     generatedAt: new Date()
   });
 
-  return NextResponse.json({ classId: newClass._id.toString() });
+  return NextResponse.json({ 
+    success: true,
+    classId: newClass._id.toString(),
+    className: name
+  });
 }

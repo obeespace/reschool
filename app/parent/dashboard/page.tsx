@@ -2,63 +2,187 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import DashboardLayout from "@/app/components/Sidebar";
+import { StatCard, PageHeader, LoadingSpinner } from "@/app/components/UIComponents";
 
 export default function ParentDashboard() {
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [parent, setParent] = useState<any>(null);
+  const [wards, setWards] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
 
   useEffect(() => {
-    const checkAuth = () => {
-      const token = localStorage.getItem("token");
-      
-      if (!token) {
-        router.push("/api/auth/login");
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      if (payload.role !== "PARENT") {
+        router.push("/login");
         return;
       }
 
-      try {
-        // Decode JWT token to check role
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        
-        if (payload.role !== "PARENT") {
-          router.push("/api/auth/login");
-          return;
-        }
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      setParent(userData);
 
-        setIsAuthorized(true);
-      } catch (error) {
-        console.error("Invalid token:", error);
-        router.push("/api/auth/login");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
+      fetchWards();
+      fetchAnnouncements();
+    } catch (error) {
+      router.push("/login");
+    }
   }, [router]);
+
+  const fetchWards = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/parents/ward-scores", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWards(data.students || []);
+      }
+    } catch (error) {
+      console.error("Error fetching wards:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchAnnouncements = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/announcements/list", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAnnouncements(data.announcements || []);
+      }
+    } catch (error) {
+      console.error("Error fetching announcements:", error);
+    }
+  };
 
   if (isLoading) {
     return (
-      <div className="p-8 flex items-center justify-center">
-        <p className="text-lg">Loading...</p>
-      </div>
+      <DashboardLayout role="PARENT">
+        <LoadingSpinner />
+      </DashboardLayout>
     );
   }
 
-  if (!isAuthorized) {
-    return null;
-  }
-
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold">Parent Dashboard</h1>
-      <p className="mt-2">
-        Monitor your child's academic progress in real time.
-      </p>
-      <p className="mt-4 text-green-700">
-        AI guidance now available for subject & career decisions.
-      </p>
-    </div>
+    <DashboardLayout role="PARENT">
+      <PageHeader
+        title="Parent Dashboard"
+        description={`Welcome, ${parent?.fullName || "Parent"}!`}
+      />
+
+      <div className="p-6">
+        {/* Stats Grid */}
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <StatCard title="My Wards" value={wards.length} icon="👨‍👩‍👧‍👦" color="indigo" />
+          <StatCard title="Active Term" value="1st Term" icon="📅" color="blue" />
+          <StatCard title="Reports Available" value="3" icon="📄" color="green" />
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <button
+              onClick={() => router.push("/parent/wards")}
+              className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
+            >
+              <div className="text-2xl mb-2">👨‍👩‍👧‍👦</div>
+              <div className="font-semibold">My Wards</div>
+              <div className="text-sm text-gray-600">View my children's profiles</div>
+            </button>
+
+            <button
+              onClick={() => router.push("/parent/scores")}
+              className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
+            >
+              <div className="text-2xl mb-2">📊</div>
+              <div className="font-semibold">View Scores</div>
+              <div className="text-sm text-gray-600">Check academic performance</div>
+            </button>
+          </div>
+        </div>
+
+        {/* My Wards */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-bold mb-4">My Wards</h2>
+          {wards.length > 0 ? (
+            <div className="space-y-4">
+              {wards.map((ward: any) => (
+                <div key={ward._id} className="p-4 bg-gray-50 rounded-lg flex justify-between items-center">
+                  <div>
+                    <div className="font-semibold text-lg">{ward.fullName}</div>
+                    <div className="text-sm text-gray-600">
+                      {ward.currentClassId?.level} {ward.currentClassId?.arm}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/parent/scores?student=${ward._id}`)}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  >
+                    View Scores
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No wards found.</p>
+              <p className="text-sm mt-2">Please contact the school administrator.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Tips */}
+        <div className="mt-6 bg-blue-50 rounded-lg p-6 border-l-4 border-blue-500">
+          <h3 className="font-semibold text-blue-900 mb-2">💡 Tip</h3>
+          <p className="text-blue-800 text-sm">
+            You can monitor your ward's academic progress in real-time. Check the scores section regularly to stay updated with their performance.
+          </p>
+        </div>
+
+        {/* Announcements Section */}
+        <div className="bg-white rounded-lg shadow p-6 mt-8">
+          <h2 className="text-xl font-bold mb-4">📢 Announcements</h2>
+          <div className="space-y-4">
+            {announcements.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No announcements yet</p>
+            ) : (
+              announcements.map((announcement) => (
+                <div key={announcement.id} className="p-4 border rounded-lg">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-semibold">{announcement.title}</h3>
+                    <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                      {announcement.announcementType === "GENERAL" ? "General" : "Class"}
+                    </span>
+                  </div>
+                  <p className="text-gray-700 mb-2">{announcement.message}</p>
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Posted by: {announcement.postedBy.name} ({announcement.postedBy.role})</span>
+                    <span>{new Date(announcement.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  {announcement.className && (
+                    <div className="mt-2 text-sm text-blue-600">Class: {announcement.className}</div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </DashboardLayout>
   );
 }
