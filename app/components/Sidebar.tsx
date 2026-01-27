@@ -1,72 +1,94 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
+import Link from "next/link";
+import { ReactNode, useEffect, useState, memo, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
+
+// Lazy load icons to reduce initial bundle size
+const LayoutDashboard = dynamic(() => import("lucide-react").then(mod => ({ default: mod.LayoutDashboard })), { ssr: false });
+const Megaphone = dynamic(() => import("lucide-react").then(mod => ({ default: mod.Megaphone })), { ssr: false });
+const Calendar = dynamic(() => import("lucide-react").then(mod => ({ default: mod.Calendar })), { ssr: false });
+const BookOpen = dynamic(() => import("lucide-react").then(mod => ({ default: mod.BookOpen })), { ssr: false });
+const School = dynamic(() => import("lucide-react").then(mod => ({ default: mod.School })), { ssr: false });
+const Users = dynamic(() => import("lucide-react").then(mod => ({ default: mod.Users })), { ssr: false });
+const GraduationCap = dynamic(() => import("lucide-react").then(mod => ({ default: mod.GraduationCap })), { ssr: false });
+const UsersRound = dynamic(() => import("lucide-react").then(mod => ({ default: mod.UsersRound })), { ssr: false });
+const BarChart3 = dynamic(() => import("lucide-react").then(mod => ({ default: mod.BarChart3 })), { ssr: false });
+const ClipboardList = dynamic(() => import("lucide-react").then(mod => ({ default: mod.ClipboardList })), { ssr: false });
+const User = dynamic(() => import("lucide-react").then(mod => ({ default: mod.User })), { ssr: false });
+const LogOut = dynamic(() => import("lucide-react").then(mod => ({ default: mod.LogOut })), { ssr: false });
+const Bell = dynamic(() => import("lucide-react").then(mod => ({ default: mod.Bell })), { ssr: false });
+const ChevronLeft = dynamic(() => import("lucide-react").then(mod => ({ default: mod.ChevronLeft })), { ssr: false });
+const Menu = dynamic(() => import("lucide-react").then(mod => ({ default: mod.Menu })), { ssr: false });
 
 export interface SidebarProps {
   role: "ADMIN" | "TEACHER" | "PARENT";
   children: ReactNode;
 }
 
-export default function DashboardLayout({ role, children }: SidebarProps) {
+function DashboardLayout({ role, children }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [recentAnnouncements, setRecentAnnouncements] = useState<any[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     router.push("/login");
-  };
+  }, [router]);
 
-  const adminLinks = [
-    { name: "Dashboard", path: "/admin/dashboard", icon: "🏠" },
-    { name: "Announcements", path: "/admin/announcements", icon: "📢" },
-    { name: "Academic Years", path: "/admin/academic-years", icon: "📅" },
-    { name: "Subjects", path: "/admin/subjects", icon: "📚" },
-    { name: "Classes", path: "/admin/classes", icon: "🏫" },
-    { name: "Teachers", path: "/admin/teachers", icon: "👨‍🏫" },
-    { name: "Students", path: "/admin/students", icon: "👨‍🎓" },
-    { name: "Parents", path: "/admin/parents", icon: "👪" },
-    { name: "Reports", path: "/admin/reports", icon: "📊" },
-  ];
+  // Memoize links to prevent recreating on every render
+  const links = useMemo(() => {
+    const adminLinks = [
+      { name: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
+      { name: "Announcements", path: "/admin/announcements", icon: Megaphone },
+      { name: "Academic Years", path: "/admin/academic-years", icon: Calendar },
+      { name: "Subjects", path: "/admin/subjects", icon: BookOpen },
+      { name: "Classes", path: "/admin/classes", icon: School },
+      { name: "Teachers", path: "/admin/teachers", icon: Users },
+      { name: "Students", path: "/admin/students", icon: GraduationCap },
+      { name: "Parents", path: "/admin/parents", icon: UsersRound },
+      { name: "Reports", path: "/admin/reports", icon: BarChart3 },
+    ];
 
-  const teacherLinks = [
-    { name: "Dashboard", path: "/teacher/dashboard", icon: "🏠" },
-    { name: "Announcements", path: "/teacher/announcements", icon: "📢" },
-    { name: "My Classes", path: "/teacher/classes", icon: "🏫" },
-    { name: "Students", path: "/teacher/students", icon: "👨‍🎓" },
-    { name: "Scores", path: "/teacher/scores", icon: "📝" },
-    { name: "My Profile", path: "/teacher/profile", icon: "👤" },
-  ];
+    const teacherLinks = [
+      { name: "Dashboard", path: "/teacher/dashboard", icon: LayoutDashboard },
+      { name: "Announcements", path: "/teacher/announcements", icon: Megaphone },
+      { name: "My Classes", path: "/teacher/classes", icon: School },
+      { name: "Students", path: "/teacher/students", icon: GraduationCap },
+      { name: "Scores", path: "/teacher/scores", icon: ClipboardList },
+      { name: "My Profile", path: "/teacher/profile", icon: User },
+    ];
 
-  const parentLinks = [
-    { name: "Dashboard", path: "/parent/dashboard", icon: "🏠" },
-    { name: "Announcements", path: "/parent/announcements", icon: "📢" },
-    { name: "My Wards", path: "/parent/wards", icon: "👨‍👩‍👧‍👦" },
-    { name: "Scores", path: "/parent/scores", icon: "📊" },
-  ];
+    const parentLinks = [
+      { name: "Dashboard", path: "/parent/dashboard", icon: LayoutDashboard },
+      { name: "Announcements", path: "/parent/announcements", icon: Megaphone },
+      { name: "My Wards", path: "/parent/wards", icon: UsersRound },
+      { name: "Scores", path: "/parent/scores", icon: BarChart3 },
+    ];
 
-  const links =
-    role === "ADMIN" ? adminLinks : role === "TEACHER" ? teacherLinks : parentLinks;
+    return role === "ADMIN" ? adminLinks : role === "TEACHER" ? teacherLinks : parentLinks;
+  }, [role]);
 
   useEffect(() => {
-    // Small delay to ensure component is mounted
+    // Defer non-critical features to improve initial load
     const timer = setTimeout(() => {
       fetchUnreadCount();
-    }, 500);
+    }, 1000); // Increased delay to prioritize page load
     
-    // Refresh count every 60 seconds
-    const interval = setInterval(fetchUnreadCount, 60000);
+    // Refresh count every 2 minutes instead of 1
+    const interval = setInterval(fetchUnreadCount, 120000);
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
     };
   }, []);
 
-  const fetchUnreadCount = async () => {
+  const fetchUnreadCount = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -79,17 +101,13 @@ export default function DashboardLayout({ role, children }: SidebarProps) {
         const data = await response.json();
         setUnreadCount(data.unreadCount || 0);
         setRecentAnnouncements(data.recentAnnouncements || []);
-      } else {
-        // Silently fail for non-critical feature
-        console.log("Could not fetch unread count");
       }
     } catch (error) {
-      // Silently fail - announcements are not critical for navigation
       console.log("Unread count unavailable:", error);
     }
-  };
+  }, []);
 
-  const markAsRead = async (announcementId: string) => {
+  const markAsRead = useCallback(async (announcementId: string) => {
     try {
       const token = localStorage.getItem("token");
       await fetch("/api/announcements/mark-read", {
@@ -104,124 +122,182 @@ export default function DashboardLayout({ role, children }: SidebarProps) {
     } catch (error) {
       console.error("Error marking as read:", error);
     }
-  };
+  }, [fetchUnreadCount]);
+
+  const handleNavigation = useCallback((path: string) => {
+    router.push(path);
+  }, [router]);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <div className="w-64 bg-indigo-900 text-white min-h-screen flex flex-col">
-        <div className="p-6 border-b border-indigo-800">
-          <h1 className="text-2xl font-bold">ReSchool</h1>
-          <p className="text-indigo-300 text-sm mt-1">{role}</p>
+      {/* Sidebar */}
+      <div className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 min-h-screen flex flex-col transition-all duration-300 shadow-sm`}>
+        {/* Header */}
+        <div className={`${sidebarCollapsed ? 'p-4' : 'p-6'} border-b border-gray-200 flex items-center justify-between`}>
+          {!sidebarCollapsed && (
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">ReSchool</h1>
+              <p className="text-gray-500 text-xs mt-0.5 uppercase tracking-wide">{role}</p>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            {sidebarCollapsed ? <Menu size={20} className="text-gray-600" /> : <ChevronLeft size={20} className="text-gray-600" />}
+          </button>
         </div>
 
-        <nav className="flex-1 p-4">
-          <ul className="space-y-2">
-            {links.map((link) => (
-              <li key={link.path}>
-                <button
-                  onClick={() => router.push(link.path)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                    pathname === link.path
-                      ? "bg-indigo-700 text-white"
-                      : "text-indigo-200 hover:bg-indigo-800"
-                  }`}
-                >
-                  <span className="text-xl">{link.icon}</span>
-                  <span>{link.name}</span>
-                </button>
-              </li>
-            ))}
+        {/* Navigation */}
+        <nav className="flex-1 p-3 overflow-y-auto">
+          <ul className="space-y-1">
+            {links.map((link) => {
+              const Icon = link.icon;
+              const isActive = pathname === link.path;
+              return (
+                <li key={link.path}>
+                  <Link href={link.path} prefetch={true}>
+                    <button
+                      onClick={() => handleNavigation(link.path)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${
+                        isActive
+                          ? "bg-indigo-50 text-indigo-700"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                      title={sidebarCollapsed ? link.name : undefined}
+                    >
+                      <Icon size={20} className={`${isActive ? 'text-indigo-600' : 'text-gray-500 group-hover:text-gray-700'} shrink-0`} />
+                      {!sidebarCollapsed && <span className="font-medium text-sm">{link.name}</span>}
+                    </button>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-indigo-800">
+        {/* Logout Button */}
+        <div className="p-3 border-t border-gray-200">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-indigo-200 hover:bg-indigo-800 transition"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all group"
+            title={sidebarCollapsed ? "Logout" : undefined}
           >
-            <span className="text-xl">🚪</span>
-            <span>Logout</span>
+            <LogOut size={20} className="text-gray-500 group-hover:text-red-600 shrink-0" />
+            {!sidebarCollapsed && <span className="font-medium text-sm">Logout</span>}
           </button>
         </div>
       </div>
       
-      <div className="flex-1 overflow-auto">
-        {/* Top notification bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex justify-end items-center">
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 rounded-full hover:bg-gray-100 transition"
-            >
-              <span className="text-2xl">🔔</span>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center font-bold">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </button>
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto flex flex-col">
+        {/* Top Bar */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+          <div className="flex items-center gap-4">
+            <h2 className="text-sm text-gray-600">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </h2>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Search Bar */}
+            <div className="relative hidden md:block">
+              <input
+                type="text"
+                placeholder="Search..."
+                className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-64"
+              />
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
 
-            {/* Notification Dropdown */}
-            {showNotifications && (
-              <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-2xl border border-gray-200 z-50">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                  <h3 className="font-semibold text-gray-900">Notifications</h3>
-                  <button
-                    onClick={() => {
-                      const announcementsPath = `/${role.toLowerCase()}/announcements`;
-                      router.push(announcementsPath);
-                      setShowNotifications(false);
-                    }}
-                    className="text-sm text-indigo-600 hover:text-indigo-700"
-                  >
-                    View All
-                  </button>
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {recentAnnouncements.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500">
-                      <span className="text-4xl block mb-2">📭</span>
-                      <p>No new announcements</p>
-                    </div>
-                  ) : (
-                    recentAnnouncements.map((announcement) => (
-                      <div
-                        key={announcement.id}
-                        className="p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => {
-                          markAsRead(announcement.id);
-                          const announcementsPath = `/${role.toLowerCase()}/announcements`;
-                          router.push(announcementsPath);
-                          setShowNotifications(false);
-                        }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="text-2xl">📢</span>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-1">
-                              <h4 className="font-semibold text-gray-900 text-sm">{announcement.title}</h4>
-                              {announcement.isNew && (
-                                <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1"></span>
-                              )}
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <Bell size={20} className="text-gray-600" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-100 z-50">
+                  <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                    <h3 className="font-semibold text-gray-900">Notifications</h3>
+                    <button
+                      onClick={() => {
+                        const announcementsPath = `/${role.toLowerCase()}/announcements`;
+                        router.push(announcementsPath);
+                        setShowNotifications(false);
+                      }}
+                      className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                    >
+                      View All
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {recentAnnouncements.length === 0 ? (
+                      <div className="p-8 text-center text-gray-500">
+                        <Bell size={40} className="mx-auto mb-2 text-gray-300" />
+                        <p className="text-sm">No new announcements</p>
+                      </div>
+                    ) : (
+                      recentAnnouncements.map((announcement) => (
+                        <div
+                          key={announcement.id}
+                          className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={() => {
+                            markAsRead(announcement.id);
+                            const announcementsPath = `/${role.toLowerCase()}/announcements`;
+                            router.push(announcementsPath);
+                            setShowNotifications(false);
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 bg-indigo-50 rounded-lg">
+                              <Megaphone size={16} className="text-indigo-600" />
                             </div>
-                            <p className="text-xs text-gray-600 line-clamp-2">{announcement.message}</p>
-                            <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                              <span>{announcement.postedBy?.name}</span>
-                              <span>•</span>
-                              <span>{announcement.timeAgo}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between mb-1">
+                                <h4 className="font-semibold text-gray-900 text-sm truncate pr-2">{announcement.title}</h4>
+                                {announcement.isNew && (
+                                  <span className="w-2 h-2 bg-red-500 rounded-full shrink-0 mt-1.5"></span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-600 line-clamp-2">{announcement.message}</p>
+                              <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                                <span className="truncate">{announcement.postedBy?.name}</span>
+                                <span>•</span>
+                                <span>{announcement.timeAgo}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-        {children}
+
+        {/* Page Content */}
+        <div className="flex-1">
+          {children}
+        </div>
       </div>
     </div>
   );
 }
+
+export default memo(DashboardLayout);

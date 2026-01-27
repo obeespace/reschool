@@ -1,7 +1,25 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Optimize production builds
+  reactStrictMode: true,
+  
+  // Optimize images
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 60,
+  },
+  
+  // Compress output
+  compress: true,
+  
+  // Enable experimental features for better performance
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'sonner'],
+  },
+  
+  // Use Turbopack for faster builds (Next.js 16 default)
+  turbopack: {},
 };
 
 export default nextConfig;

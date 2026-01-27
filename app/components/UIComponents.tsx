@@ -1,36 +1,47 @@
-import { ReactNode } from "react";
+import { ReactNode, memo } from "react";
+import { LucideIcon } from "lucide-react";
 
 interface CardProps {
   title: string;
   value: string | number;
-  icon: string;
+  icon: LucideIcon;
   color?: string;
+  trend?: { value: number; isPositive: boolean };
 }
 
-export function StatCard({ title, value, icon, color = "indigo" }: CardProps) {
+export const StatCard = memo(function StatCard({ title, value, icon: Icon, color = "indigo", trend }: CardProps) {
   const colorClasses = {
-    indigo: "bg-indigo-500",
-    green: "bg-green-500",
-    yellow: "bg-yellow-500",
-    red: "bg-red-500",
-    blue: "bg-blue-500",
-    purple: "bg-purple-500",
+    indigo: { bg: "bg-indigo-50", icon: "text-indigo-600", trend: "text-indigo-600" },
+    green: { bg: "bg-green-50", icon: "text-green-600", trend: "text-green-600" },
+    yellow: { bg: "bg-amber-50", icon: "text-amber-600", trend: "text-amber-600" },
+    red: { bg: "bg-red-50", icon: "text-red-600", trend: "text-red-600" },
+    blue: { bg: "bg-blue-50", icon: "text-blue-600", trend: "text-blue-600" },
+    purple: { bg: "bg-purple-50", icon: "text-purple-600", trend: "text-purple-600" },
   };
 
+  const colors = colorClasses[color as keyof typeof colorClasses] || colorClasses.indigo;
+
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-gray-500 text-sm">{title}</p>
-          <p className="text-3xl font-bold mt-2">{value}</p>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-gray-600 text-sm font-medium mb-1">{title}</p>
+          <p className="text-3xl font-bold text-gray-900 mb-2">{value}</p>
+          {trend && (
+            <p className={`text-sm font-medium flex items-center gap-1 ${trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
+              <span>{trend.isPositive ? '↑' : '↓'}</span>
+              <span>{Math.abs(trend.value)}%</span>
+              <span className="text-gray-500 font-normal">vs last period</span>
+            </p>
+          )}
         </div>
-        <div className={`${colorClasses[color as keyof typeof colorClasses] || colorClasses.indigo} w-12 h-12 rounded-lg flex items-center justify-center text-2xl`}>
-          {icon}
+        <div className={`${colors.bg} p-3 rounded-lg`}>
+          <Icon className={colors.icon} size={24} />
         </div>
       </div>
     </div>
   );
-}
+});
 
 interface Column {
   header: string;
@@ -45,21 +56,21 @@ interface DataTableProps {
   onRowClick?: (rowIndex: number) => void;
 }
 
-export function DataTable({ headers, data, columns, onRowClick }: DataTableProps) {
+export const DataTable = memo(function DataTable({ headers, data, columns, onRowClick }: DataTableProps) {
   // Support both old array format and new column format
   const isColumnsFormat = columns && columns.length > 0;
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               {isColumnsFormat ? (
                 columns.map((col, index) => (
                   <th
                     key={index}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
                   >
                     {col.header}
                   </th>
@@ -68,7 +79,7 @@ export function DataTable({ headers, data, columns, onRowClick }: DataTableProps
                 headers?.map((header, index) => (
                   <th
                     key={index}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
                   >
                     {header}
                   </th>
@@ -76,13 +87,13 @@ export function DataTable({ headers, data, columns, onRowClick }: DataTableProps
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-100">
             {isColumnsFormat ? (
               (data as any[]).map((row, rowIndex) => (
                 <tr
                   key={rowIndex}
                   onClick={() => onRowClick && onRowClick(rowIndex)}
-                  className={onRowClick ? "cursor-pointer hover:bg-gray-50" : ""}
+                  className={onRowClick ? "cursor-pointer hover:bg-gray-50 transition-colors" : ""}
                 >
                   {columns!.map((col, cellIndex) => (
                     <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -96,7 +107,7 @@ export function DataTable({ headers, data, columns, onRowClick }: DataTableProps
                 <tr
                   key={rowIndex}
                   onClick={() => onRowClick && onRowClick(rowIndex)}
-                  className={onRowClick ? "cursor-pointer hover:bg-gray-50" : ""}
+                  className={onRowClick ? "cursor-pointer hover:bg-gray-50 transition-colors" : ""}
                 >
                   {row.map((cell, cellIndex) => (
                     <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -111,7 +122,7 @@ export function DataTable({ headers, data, columns, onRowClick }: DataTableProps
       </div>
     </div>
   );
-}
+});
 
 interface ModalProps {
   isOpen: boolean;
@@ -120,26 +131,28 @@ interface ModalProps {
   children: ReactNode;
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export const Modal = memo(function Modal({ isOpen, onClose, title, children }: ModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="border-b px-6 py-4 flex justify-between items-center sticky top-0 bg-white">
-          <h2 className="text-xl font-bold">{title}</h2>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="border-b border-gray-100 px-6 py-4 flex justify-between items-center sticky top-0 bg-white">
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl"
+            className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
           >
-            ×
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
         <div className="p-6">{children}</div>
       </div>
     </div>
   );
-}
+});
 
 export interface ButtonProps {
   children: ReactNode;
@@ -152,7 +165,7 @@ export interface ButtonProps {
   className?: string;
 }
 
-export function Button({
+export const Button = memo(function Button({
   children,
   onClick,
   variant = "primary",
@@ -163,15 +176,15 @@ export function Button({
   className = "",
 }: ButtonProps) {
   const variantClasses = {
-    primary: "bg-indigo-600 hover:bg-indigo-700 text-white",
-    secondary: "bg-gray-200 hover:bg-gray-300 text-gray-800",
-    danger: "bg-red-600 hover:bg-red-700 text-white",
+    primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow",
+    secondary: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-sm",
+    danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow",
   };
 
   const sizeClasses = {
-    sm: "px-3 py-1 text-sm",
-    md: "px-4 py-2",
-    lg: "px-6 py-3 text-lg",
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2 text-sm",
+    lg: "px-6 py-3 text-base",
   };
 
   return (
@@ -184,14 +197,15 @@ export function Button({
         ${sizeClasses[size]}
         ${fullWidth ? "w-full" : ""}
         ${className}
-        rounded-lg font-semibold transition
-        disabled:opacity-50 disabled:cursor-not-allowed
+        rounded-lg font-medium transition-all
+        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none
+        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
       `}
     >
       {children}
     </button>
   );
-}
+});
 
 interface InputProps {
   label: string;
@@ -202,7 +216,7 @@ interface InputProps {
   required?: boolean;
 }
 
-export function Input({
+export const Input = memo(function Input({
   label,
   type = "text",
   value,
@@ -212,7 +226,7 @@ export function Input({
 }: InputProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-gray-700 mb-2">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <input
@@ -221,11 +235,11 @@ export function Input({
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-sm"
       />
     </div>
   );
-}
+});
 
 interface SelectProps {
   label: string;
@@ -235,7 +249,7 @@ interface SelectProps {
   required?: boolean;
 }
 
-export function Select({
+export const Select = memo(function Select({
   label,
   value,
   onChange,
@@ -244,14 +258,14 @@ export function Select({
 }: SelectProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-gray-700 mb-2">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <select
         value={value}
         onChange={onChange}
         required={required}
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-sm bg-white"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -261,15 +275,18 @@ export function Select({
       </select>
     </div>
   );
-}
+});
 
-export function LoadingSpinner() {
+export const LoadingSpinner = memo(function LoadingSpinner() {
   return (
     <div className="flex items-center justify-center p-8">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="relative">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent absolute top-0 left-0"></div>
+      </div>
     </div>
   );
-}
+});
 
 interface PageHeaderProps {
   title: string;
@@ -277,16 +294,16 @@ interface PageHeaderProps {
   action?: ReactNode;
 }
 
-export function PageHeader({ title, description, action }: PageHeaderProps) {
+export const PageHeader = memo(function PageHeader({ title, description, action }: PageHeaderProps) {
   return (
-    <div className="bg-white shadow-sm border-b mb-6">
-      <div className="p-6 flex justify-between items-center">
+    <div className="bg-white border-b border-gray-200 px-6 py-6">
+      <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
-          {description && <p className="text-gray-600 mt-1">{description}</p>}
+          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          {description && <p className="text-gray-600 mt-1 text-sm">{description}</p>}
         </div>
         {action && <div>{action}</div>}
       </div>
     </div>
   );
-}
+});
