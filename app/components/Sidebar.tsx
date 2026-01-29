@@ -130,8 +130,16 @@ function DashboardLayout({ role, children }: SidebarProps) {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
+      {/* Mobile Overlay Backdrop */}
+      {!sidebarCollapsed && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 min-h-screen flex flex-col transition-all duration-300 shadow-sm`}>
+      <div className={`fixed lg:relative lg:flex ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 min-h-screen flex flex-col transition-all duration-300 shadow-sm z-50 lg:z-0 ${sidebarCollapsed ? 'left-0' : 'left-0 lg:left-0'}`}>
         {/* Header */}
         <div className={`${sidebarCollapsed ? 'p-4' : 'p-6'} border-b border-gray-200 flex items-center justify-between`}>
           {!sidebarCollapsed && (
@@ -190,7 +198,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
       </div>
       
       {/* Main Content */}
-      <div className="flex-1 overflow-auto flex flex-col">
+      <div className="flex-1 overflow-auto flex flex-col w-full lg:w-auto">
         {/* Top Bar */}
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
           <div className="flex items-center gap-4">

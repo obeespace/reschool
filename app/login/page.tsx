@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Lock, Mail, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
 
 export default function LoginPage() {
@@ -12,15 +12,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!agreedToTerms) {
-      toast.error("Please agree to the Terms & Privacy");
-      return;
-    }
 
     setIsLoading(true);
 
@@ -131,23 +125,6 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
-            </div>
-
-            {/* Terms Checkbox */}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="terms"
-                checked={agreedToTerms}
-                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-              />
-              <label htmlFor="terms" className="text-sm text-gray-600">
-                I agree to the{" "}
-                <button type="button" className="text-indigo-600 hover:text-indigo-700">
-                  Terms & Privacy
-                </button>
-              </label>
             </div>
 
             {/* Login Button */}
