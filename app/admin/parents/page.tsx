@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, DataTable, Modal, Button, Input, Select } from "@/app/components/UIComponents";
 
@@ -82,7 +83,7 @@ export default function ParentsPage() {
     e.preventDefault();
     
     if (!formData.fullName || !formData.email || !formData.password) {
-      alert("Please fill all required fields");
+      toast.error("Please fill all required fields");
       return;
     }
 
@@ -104,16 +105,16 @@ export default function ParentsPage() {
       });
 
       if (response.ok) {
-        alert("Parent account created successfully!");
+        toast.success("Parent account created successfully!");
         setShowModal(false);
         setFormData({ fullName: "", email: "", password: "", wardIds: [] });
         fetchParents();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to create parent account");
       }
     } catch (error) {
-      alert("Failed to create parent account");
+      toast.error("Failed to create parent account");
     }
   };
 

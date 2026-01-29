@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, DataTable, Modal, Button, Input, Select } from "@/app/components/UIComponents";
 
@@ -85,12 +86,12 @@ export default function TeacherStudentsPage() {
     e.preventDefault();
     
     if (!formData.fullName || !formData.admissionNumber) {
-      alert("Please fill all required fields");
+      toast.error("Please fill all required fields");
       return;
     }
 
     if (!isClassTeacher || !classInfo) {
-      alert("You must be a class teacher to add students");
+      toast.error("You must be a class teacher to add students");
       return;
     }
 
@@ -109,16 +110,16 @@ export default function TeacherStudentsPage() {
       });
 
       if (response.ok) {
-        alert("Student added successfully!");
+        toast.success("Student added successfully!");
         setShowModal(false);
         setFormData({ fullName: "", admissionNumber: "", dateOfBirth: "", gender: "" });
         fetchStudents(classInfo._id);
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to add student");
       }
     } catch (error) {
-      alert("Failed to add student");
+      toast.error("Failed to add student");
     }
   };
 

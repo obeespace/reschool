@@ -39,7 +39,8 @@ export async function POST(req: Request) {
       email,
       passwordHash,
       role: "TEACHER",
-      schoolId: user!.schoolId
+      schoolId: user!.schoolId,
+      isActive: true
     });
 
     // If assigned as class teacher, update the class

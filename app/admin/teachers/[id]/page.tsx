@@ -223,29 +223,34 @@ export default function TeacherProfilePage() {
   };
 
   const handleRemoveSubject = async (subjectId: string) => {
-    if (!confirm("Are you sure you want to remove this subject?")) return;
+    toast("Remove subject from teacher?", {
+      action: {
+        label: "Remove",
+        onClick: async () => {
+          try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`/api/teachers/${teacherId}/remove-subject`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ subjectId }),
+            });
 
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`/api/teachers/${teacherId}/remove-subject`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+            if (response.ok) {
+              toast.success("Subject removed successfully!");
+              fetchTeacherProfile();
+            } else {
+              const data = await response.json();
+              toast.error(data.error || "Failed to remove subject");
+            }
+          } catch (error) {
+            toast.error("Error removing subject");
+          }
         },
-        body: JSON.stringify({ subjectId }),
-      });
-
-      if (response.ok) {
-        toast.success("Subject removed successfully!");
-        fetchTeacherProfile();
-      } else {
-        const data = await response.json();
-        toast.error(data.error || "Failed to remove subject");
       }
-    } catch (error) {
-      toast.error("Error removing subject");
-    }
+    });
   };
 
   const toggleClassForSubject = (classId: string) => {

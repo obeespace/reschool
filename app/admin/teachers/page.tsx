@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, DataTable, Modal, Button, Input, Select } from "@/app/components/UIComponents";
 
@@ -62,7 +63,8 @@ export default function TeachersPage() {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch("/api/teachers/list", {
-        headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
       });
 
       if (response.ok) {
@@ -113,7 +115,7 @@ export default function TeachersPage() {
     e.preventDefault();
     
     if (!formData.fullName || !formData.email || !formData.password) {
-      alert("Please fill all required fields");
+      toast.error("Please fill all required fields");
       return;
     }
 
@@ -135,16 +137,16 @@ export default function TeachersPage() {
       });
 
       if (response.ok) {
-        alert("Teacher created successfully!");
+        toast.success("Teacher created successfully!");
         setShowModal(false);
         setFormData({ fullName: "", email: "", password: "", classTeacherOf: "" });
         fetchTeachers();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to create teacher");
       }
     } catch (error) {
-      alert("Failed to create teacher");
+      toast.error("Failed to create teacher");
     }
   };
 

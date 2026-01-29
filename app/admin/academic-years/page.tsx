@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, DataTable, Modal, Button, Input } from "@/app/components/UIComponents";
 
@@ -71,16 +72,16 @@ export default function AcademicYearsPage() {
       });
 
       if (response.ok) {
-        alert("Academic year created successfully!");
+        toast.success("Academic year created successfully!");
         setShowModal(false);
         setFormData({ name: "", startDate: "", endDate: "", setAsActive: false });
         fetchAcademicYears();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to create academic year");
       }
     } catch (error) {
-      alert("Failed to create academic year");
+      toast.error("Failed to create academic year");
     }
   };
 
@@ -97,14 +98,14 @@ export default function AcademicYearsPage() {
       });
 
       if (response.ok) {
-        alert("Academic year activated successfully!");
+        toast.success("Academic year activated successfully!");
         fetchAcademicYears();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to activate academic year");
       }
     } catch (error) {
-      alert("Failed to activate academic year");
+      toast.error("Failed to activate academic year");
     }
   };
 

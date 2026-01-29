@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, Button, Modal, Input, LoadingSpinner } from "@/app/components/UIComponents";
 
@@ -55,16 +56,16 @@ export default function AdminSubjects() {
       });
 
       if (response.ok) {
-        alert("Subject created successfully!");
+        toast.success("Subject created successfully!");
         setShowModal(false);
         setFormData({ name: "", code: "" });
         fetchSubjects();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to create subject");
       }
     } catch (error) {
-      alert("An error occurred");
+      toast.error("An error occurred");
     }
   };
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, Button, Modal, Input, Select, LoadingSpinner } from "@/app/components/UIComponents";
 
@@ -110,7 +111,7 @@ export default function TeacherScores() {
       });
 
       if (response.ok) {
-        alert("Score uploaded successfully!");
+        toast.success("Score uploaded successfully!");
         setShowModal(false);
         setFormData({
           studentId: "",
@@ -125,10 +126,10 @@ export default function TeacherScores() {
         });
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error.error || "Failed to upload score");
       }
     } catch (error) {
-      alert("An error occurred");
+      toast.error("An error occurred");
     }
   };
 
