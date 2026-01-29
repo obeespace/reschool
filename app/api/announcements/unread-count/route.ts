@@ -2,6 +2,7 @@ import connectDB from "@/app/utils/db";
 import Announcement from "@/app/models/Announcements";
 import AnnouncementRead from "@/app/models/AnnouncementRead";
 import Student from "@/app/models/Students";
+import Class from "@/app/models/Class";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
@@ -18,7 +19,10 @@ export async function GET(req: Request) {
     let announcementsQuery: any = { schoolId: user.schoolId };
 
     // Build query based on user role (same logic as list endpoint)
-    if (user.role === "TEACHER") {
+    if (user.role === "ADMIN") {
+      // Admin sees all announcements in their school
+      announcementsQuery = { schoolId: user.schoolId };
+    } else if (user.role === "TEACHER") {
       announcementsQuery = {
         schoolId: user.schoolId,
         $or: [

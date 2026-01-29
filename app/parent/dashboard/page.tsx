@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Users, Calendar, FileText } from "lucide-react";
 import DashboardLayout from "@/app/components/Sidebar";
 import { StatCard, PageHeader, LoadingSpinner } from "@/app/components/UIComponents";
 
@@ -87,9 +88,9 @@ export default function ParentDashboard() {
       <div className="p-6">
         {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <StatCard title="My Wards" value={wards.length} icon="👨‍👩‍👧‍👦" color="indigo" />
-          <StatCard title="Active Term" value="1st Term" icon="📅" color="blue" />
-          <StatCard title="Reports Available" value="3" icon="📄" color="green" />
+          <StatCard title="My Wards" value={wards.length} icon={Users} color="indigo" />
+          <StatCard title="Active Term" value="1st Term" icon={Calendar} color="blue" />
+          <StatCard title="Reports Available" value="3" icon={FileText} color="green" />
         </div>
 
         {/* Quick Actions */}
@@ -100,7 +101,11 @@ export default function ParentDashboard() {
               onClick={() => router.push("/parent/wards")}
               className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
             >
-              <div className="text-2xl mb-2">👨‍👩‍👧‍👦</div>
+              <div className="w-8 h-8 mb-2 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
               <div className="font-semibold">My Wards</div>
               <div className="text-sm text-gray-600">View my children's profiles</div>
             </button>
@@ -109,7 +114,11 @@ export default function ParentDashboard() {
               onClick={() => router.push("/parent/scores")}
               className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
             >
-              <div className="text-2xl mb-2">📊</div>
+              <div className="w-8 h-8 mb-2 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
               <div className="font-semibold">View Scores</div>
               <div className="text-sm text-gray-600">Check academic performance</div>
             </button>
@@ -148,7 +157,7 @@ export default function ParentDashboard() {
 
         {/* Tips */}
         <div className="mt-6 bg-blue-50 rounded-lg p-6 border-l-4 border-blue-500">
-          <h3 className="font-semibold text-blue-900 mb-2">💡 Tip</h3>
+          <h3 className="font-semibold text-blue-900 mb-2">Tip</h3>
           <p className="text-blue-800 text-sm">
             You can monitor your ward's academic progress in real-time. Check the scores section regularly to stay updated with their performance.
           </p>
@@ -156,7 +165,7 @@ export default function ParentDashboard() {
 
         {/* Announcements Section */}
         <div className="bg-white rounded-lg shadow p-6 mt-8">
-          <h2 className="text-xl font-bold mb-4">📢 Announcements</h2>
+          <h2 className="text-xl font-bold mb-4">Announcements</h2>
           <div className="space-y-4">
             {announcements.length === 0 ? (
               <p className="text-gray-500 text-center py-4">No announcements yet</p>

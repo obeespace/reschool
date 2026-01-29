@@ -186,7 +186,7 @@ export default function ParentWardsPage() {
 
       {/* Tips Section */}
       <div className="mt-6 bg-blue-50 rounded-lg p-6">
-        <h3 className="font-semibold text-blue-900 mb-3">📌 Parental Tips</h3>
+        <h3 className="font-semibold text-blue-900 mb-3">Parental Tips</h3>
         <ul className="text-sm text-blue-800 space-y-2">
           <li>• Review your ward's performance regularly</li>
           <li>• Encourage strong performance in weak subjects</li>

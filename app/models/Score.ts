@@ -20,10 +20,9 @@ const ScoreSchema = new Schema(
 );
 
 // Calculate total before saving
-ScoreSchema.pre("save", function(next) {
+ScoreSchema.pre("save", function() {
   this.total = (this.classwork || 0) + (this.homework || 0) + 
                 (this.extracurricular || 0) + (this.test || 0) + (this.exam || 0);
-  next();
 });
 
 // Ensure unique score per student, subject, class, term, and academic year

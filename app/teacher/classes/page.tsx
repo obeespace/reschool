@@ -132,7 +132,7 @@ export default function TeacherClassesPage() {
 
       {isClassTeacher && classTeacherClass && (
         <div className="mb-6 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
-          <h3 className="text-lg font-semibold mb-2">📚 Class Teacher Assignment</h3>
+          <h3 className="text-lg font-semibold mb-2">Class Teacher Assignment</h3>
           <p className="text-xl font-bold">
             {classTeacherClass.level} {classTeacherClass.arm}
           </p>

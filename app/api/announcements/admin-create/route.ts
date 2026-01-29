@@ -1,5 +1,6 @@
 import connectDB from "@/app/utils/db";
 import Announcement from "@/app/models/Announcements";
+import Class from "@/app/models/Class";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

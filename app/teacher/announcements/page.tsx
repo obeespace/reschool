@@ -139,7 +139,7 @@ export default function TeacherAnnouncements() {
   return (
     <DashboardLayout role="TEACHER">
       <PageHeader
-        title="📢 Announcements"
+        title="Announcements"
         description="View school announcements and create class announcements"
       />
 
@@ -223,7 +223,9 @@ export default function TeacherAnnouncements() {
           <div className="space-y-4">
             {announcements.length === 0 ? (
               <div className="text-center py-12">
-                <span className="text-6xl block mb-4">📭</span>
+                <svg className="w-16 h-16 block mb-4 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
                 <p className="text-gray-500 text-lg">No announcements yet</p>
               </div>
             ) : (
@@ -232,7 +234,7 @@ export default function TeacherAnnouncements() {
                   <div className="flex justify-between items-start mb-3">
                     <h3 className="font-bold text-lg">{announcement.title}</h3>
                     <span className="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
-                      {announcement.announcementType === "GENERAL" ? "📢 General" : "📚 Class"}
+                      {announcement.announcementType === "GENERAL" ? "General" : "Class"}
                     </span>
                   </div>
                   <p className="text-gray-700 mb-4 whitespace-pre-wrap">{announcement.message}</p>
@@ -245,7 +247,7 @@ export default function TeacherAnnouncements() {
                   </div>
                   {announcement.className && (
                     <div className="mt-3 text-sm text-blue-600 font-medium">
-                      📚 Class: {announcement.className}
+                      Class: {announcement.className}
                     </div>
                   )}
                 </div>

@@ -101,7 +101,7 @@ export default function AdminAnnouncements() {
   return (
     <DashboardLayout role="ADMIN">
       <PageHeader
-        title="📢 Announcements"
+        title="Announcements"
         description="Create and manage school-wide announcements"
       />
 
@@ -181,7 +181,9 @@ export default function AdminAnnouncements() {
           <div className="space-y-4">
             {announcements.length === 0 ? (
               <div className="text-center py-12">
-                <span className="text-6xl block mb-4">📭</span>
+                <svg className="w-16 h-16 block mb-4 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
                 <p className="text-gray-500 text-lg">No announcements yet</p>
                 <p className="text-gray-400 text-sm mt-2">Create your first announcement to get started</p>
               </div>
@@ -209,7 +211,7 @@ export default function AdminAnnouncements() {
                   </div>
                   {announcement.className && (
                     <div className="mt-3 text-sm text-blue-600 font-medium">
-                      📚 Class: {announcement.className}
+                      Class: {announcement.className}
                     </div>
                   )}
                 </div>

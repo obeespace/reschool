@@ -21,4 +21,13 @@ const ClassSchema = new Schema<IClass>(
   { timestamps: true }
 );
 
+// Virtual field for class name
+ClassSchema.virtual('name').get(function() {
+  return `${this.level} ${this.arm}`;
+});
+
+// Ensure virtuals are included in JSON
+ClassSchema.set('toJSON', { virtuals: true });
+ClassSchema.set('toObject', { virtuals: true });
+
 export default models.Class || model<IClass>("Class", ClassSchema);

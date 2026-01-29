@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Building2, Users, FileText } from "lucide-react";
 import DashboardLayout from "@/app/components/Sidebar";
 import { StatCard, PageHeader, LoadingSpinner } from "@/app/components/UIComponents";
 
@@ -140,9 +141,9 @@ export default function TeacherDashboard() {
       <div className="p-6">
         {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <StatCard title="My Classes" value={stats.myClasses} icon="🏫" color="indigo" />
-          <StatCard title="My Students" value={stats.myStudents} icon="👨‍🎓" color="green" />
-          <StatCard title="Scores Uploaded" value={stats.scoresUploaded} icon="📝" color="blue" />
+          <StatCard title="My Classes" value={stats.myClasses} icon={Building2} color="indigo" />
+          <StatCard title="My Students" value={stats.myStudents} icon={Users} color="green" />
+          <StatCard title="Scores Uploaded" value={stats.scoresUploaded} icon={FileText} color="blue" />
         </div>
 
         {/* Quick Actions */}
@@ -153,7 +154,11 @@ export default function TeacherDashboard() {
               onClick={() => router.push("/teacher/students")}
               className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
             >
-              <div className="text-2xl mb-2">👨‍🎓</div>
+              <div className="w-8 h-8 mb-2 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
               <div className="font-semibold">Manage Students</div>
               <div className="text-sm text-gray-600">Add or view students in my class</div>
             </button>
@@ -162,7 +167,11 @@ export default function TeacherDashboard() {
               onClick={() => router.push("/teacher/scores")}
               className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
             >
-              <div className="text-2xl mb-2">📝</div>
+              <div className="w-8 h-8 mb-2 bg-green-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
               <div className="font-semibold">Upload Scores</div>
               <div className="text-sm text-gray-600">Enter student scores for my subjects</div>
             </button>
@@ -171,7 +180,11 @@ export default function TeacherDashboard() {
               onClick={() => router.push("/teacher/classes")}
               className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
             >
-              <div className="text-2xl mb-2">🏫</div>
+              <div className="w-8 h-8 mb-2 bg-indigo-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
               <div className="font-semibold">My Classes</div>
               <div className="text-sm text-gray-600">View classes I teach</div>
             </button>
@@ -180,7 +193,11 @@ export default function TeacherDashboard() {
               onClick={() => router.push("/teacher/profile")}
               className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition text-left"
             >
-              <div className="text-2xl mb-2">👤</div>
+              <div className="w-8 h-8 mb-2 bg-purple-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
               <div className="font-semibold">My Profile</div>
               <div className="text-sm text-gray-600">View my teaching assignments</div>
             </button>
@@ -202,7 +219,7 @@ export default function TeacherDashboard() {
             </div>
 
             <div className="p-4 bg-green-50 rounded-lg border-l-4 border-green-500">
-              <div className="font-semibold text-green-800 mb-1">👏 Keep it up!</div>
+              <div className="font-semibold text-green-800 mb-1">Keep it up!</div>
               <div className="text-sm text-green-700">You've uploaded scores for 80% of your students this term.</div>
             </div>
           </div>
@@ -211,7 +228,7 @@ export default function TeacherDashboard() {
         {/* Announcements Section */}
         <div className="bg-white rounded-lg shadow p-6 mt-8">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">📢 Announcements</h2>
+            <h2 className="text-xl font-bold">Announcements</h2>
             <button
               onClick={() => setShowAnnouncementForm(!showAnnouncementForm)}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"

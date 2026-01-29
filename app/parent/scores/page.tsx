@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, LoadingSpinner, Select } from "@/app/components/UIComponents";
 
-export default function ParentScores() {
+function ParentScoresContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
@@ -224,7 +225,7 @@ export default function ParentScores() {
             {/* Performance Insights */}
             {filteredScores.length > 0 && (
               <div className="mt-6 bg-blue-50 rounded-lg p-6 border-l-4 border-blue-500">
-                <h3 className="font-semibold text-blue-900 mb-3">📊 Performance Insights</h3>
+                <h3 className="font-semibold text-blue-900 mb-3">Performance Insights</h3>
                 <div className="space-y-2 text-blue-800 text-sm">
                   <p>
                     • Best Subject:{" "}
@@ -269,5 +270,13 @@ export default function ParentScores() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function ParentScores() {
+  return (
+    <Suspense fallback={<div className="p-6"><LoadingSpinner /></div>}>
+      <ParentScoresContent />
+    </Suspense>
   );
 }

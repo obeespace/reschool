@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const classDoc = await Class.findOne({ 
     _id: classId, 
     schoolId: teacher.schoolId,
-    teacherId: teacher.userId
+    classTeacherId: teacher.userId
   });
 
   if (!classDoc) {

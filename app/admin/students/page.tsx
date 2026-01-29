@@ -117,7 +117,7 @@ export default function StudentsPage() {
       </div>
 
       <div className="mt-6 bg-blue-50 p-4 rounded-lg">
-        <h3 className="font-semibold text-blue-900 mb-2">📝 How to Add Students</h3>
+        <h3 className="font-semibold text-blue-900 mb-2">How to Add Students</h3>
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• Assign a teacher as a class teacher for a class</li>
           <li>• That teacher can then add students to their class</li>

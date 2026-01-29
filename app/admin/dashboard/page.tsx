@@ -441,7 +441,7 @@ export default function AdminDashboard() {
                   </div>
                   {announcement.className && (
                     <div className="mt-3 pt-3 border-t border-gray-100">
-                      <span className="text-xs text-blue-600 font-medium">📚 Class: {announcement.className}</span>
+                      <span className="text-xs text-blue-600 font-medium">Class: {announcement.className}</span>
                     </div>
                   )}
                 </div>
