@@ -21,7 +21,9 @@ export default function AdminDashboard() {
     students: 0,
     parents: 0,
     classes: 0,
+    subjects: 0,
   });
+  const [schoolName, setSchoolName] = useState("");
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({
@@ -51,19 +53,31 @@ export default function AdminDashboard() {
     }
 
     // Load stats immediately
-    setStats({
-      teachers: 25,
-      students: 450,
-      parents: 380,
-      classes: 18,
-    });
-    setIsLoading(false);
+    fetchStats();
 
     // Defer announcement loading to not block UI
     setTimeout(() => {
       fetchAnnouncements();
     }, 100);
   }, [router]);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/admin/stats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data.stats);
+        setSchoolName(data.schoolName);
+      }
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const fetchAnnouncements = useCallback(async () => {
     try {
@@ -129,38 +143,45 @@ export default function AdminDashboard() {
     <DashboardLayout role="ADMIN">
       <PageHeader
         title="Admin Dashboard"
-        description="Monitor and manage your school's academic operations"
+        description={`Manage ${schoolName}'s academic operations`}
       />
 
       <div className="p-6 max-w-7xl mx-auto">
+        {isLoading ? (
+          <LoadingSpinner />
+        ) : (
+          <>
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <StatCard 
-            title="Total Teachers" 
+            title="Teachers" 
             value={stats.teachers} 
             icon={Users} 
             color="indigo"
-            trend={{ value: 12, isPositive: true }}
           />
           <StatCard 
-            title="Total Students" 
+            title="Students" 
             value={stats.students} 
             icon={GraduationCap} 
             color="green"
-            trend={{ value: 8, isPositive: true }}
           />
           <StatCard 
-            title="Active Parents" 
+            title="Parents" 
             value={stats.parents} 
             icon={UsersRound} 
             color="purple"
-            trend={{ value: 5, isPositive: true }}
           />
           <StatCard 
-            title="Total Classes" 
+            title="Classes" 
             value={stats.classes} 
             icon={School} 
             color="blue"
+          />
+          <StatCard 
+            title="Subjects" 
+            value={stats.subjects} 
+            icon={BookOpen} 
+            color="orange"
           />
         </div>
 
@@ -449,6 +470,8 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );

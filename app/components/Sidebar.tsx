@@ -130,7 +130,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Mobile Overlay Backdrop */}
+      {/* Mobile Overlay Backdrop - Only when expanded */}
       {!sidebarCollapsed && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
@@ -139,7 +139,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed lg:relative lg:flex ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 min-h-screen flex flex-col transition-all duration-300 shadow-sm z-50 lg:z-0 ${sidebarCollapsed ? 'left-0' : 'left-0 lg:left-0'}`}>
+      <div className={`${!sidebarCollapsed ? 'fixed lg:relative' : 'relative'} ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 min-h-screen flex flex-col transition-all duration-300 shadow-sm z-50 lg:z-0`}>
         {/* Header */}
         <div className={`${sidebarCollapsed ? 'p-4' : 'p-6'} border-b border-gray-200 flex items-center justify-between`}>
           {!sidebarCollapsed && (
