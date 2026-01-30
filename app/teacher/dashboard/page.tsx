@@ -18,6 +18,7 @@ export default function TeacherDashboard() {
   });
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [myClasses, setMyClasses] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any>(null);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({
     classId: "",
@@ -44,17 +45,7 @@ export default function TeacherDashboard() {
       setTeacher(userData);
 
       fetchAnnouncements();
-      fetchMyClasses();
-
-      // Simulate loading stats
-      setTimeout(() => {
-        setStats({
-          myClasses: 3,
-          myStudents: 45,
-          scoresUploaded: 120,
-        });
-        setIsLoading(false);
-      }, 500);
+      fetchDashboard();
     } catch (error) {
       router.push("/login");
     }
@@ -75,18 +66,24 @@ export default function TeacherDashboard() {
     }
   };
 
-  const fetchMyClasses = async () => {
+  const fetchDashboard = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/classes/list", {
+      const response = await fetch("/api/teachers/dashboard", {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
       if (response.ok) {
         const data = await response.json();
+        setStats(data.stats);
+        setAssignments(data.assignments);
         setMyClasses(data.classes || []);
       }
     } catch (error) {
-      console.error("Error fetching classes:", error);
+      console.error("Error fetching dashboard:", error);
+      toast.error("Failed to load dashboard data");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -208,15 +205,37 @@ export default function TeacherDashboard() {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-bold mb-4">My Assignments</h2>
           <div className="space-y-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="font-semibold mb-2">Class Teacher</div>
-              <div className="text-sm text-gray-600">JSS 1A - 15 Students</div>
-            </div>
+            {assignments?.classTeacherOf ? (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="font-semibold mb-2">Class Teacher</div>
+                <div className="text-sm text-gray-600">
+                  {assignments.classTeacherOf.name} - {assignments.classTeacherOf.studentCount} Students
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="font-semibold mb-2">Class Teacher</div>
+                <div className="text-sm text-gray-600">Not assigned</div>
+              </div>
+            )}
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="font-semibold mb-2">Mathematics Teacher</div>
-              <div className="text-sm text-gray-600">JSS 1A, JSS 1B, JSS 1C</div>
-            </div>
+            {assignments?.subjectsAndClasses?.length ? (
+              assignments.subjectsAndClasses.map((entry: any) => (
+                <div key={entry.subject?._id} className="p-4 bg-gray-50 rounded-lg">
+                  <div className="font-semibold mb-2">{entry.subject?.name || "Subject"} Teacher</div>
+                  <div className="text-sm text-gray-600">
+                    {entry.classes?.length
+                      ? entry.classes.map((cls: any) => cls.name).join(", ")
+                      : "No assigned classes"}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="font-semibold mb-2">Subject Assignments</div>
+                <div className="text-sm text-gray-600">No subject assignments yet</div>
+              </div>
+            )}
 
             <div className="p-4 bg-green-50 rounded-lg border-l-4 border-green-500">
               <div className="font-semibold text-green-800 mb-1">Keep it up!</div>

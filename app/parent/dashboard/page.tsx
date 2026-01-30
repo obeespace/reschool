@@ -12,6 +12,11 @@ export default function ParentDashboard() {
   const [parent, setParent] = useState<any>(null);
   const [wards, setWards] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    wardsCount: 0,
+    activeTerm: "N/A",
+    reportsAvailable: 0,
+  });
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -30,26 +35,28 @@ export default function ParentDashboard() {
       const userData = JSON.parse(localStorage.getItem("user") || "{}");
       setParent(userData);
 
-      fetchWards();
+      fetchDashboard();
       fetchAnnouncements();
     } catch (error) {
       router.push("/login");
     }
   }, [router]);
 
-  const fetchWards = async () => {
+  const fetchDashboard = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/parents/ward-scores", {
+      const response = await fetch("/api/parents/dashboard", {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
 
       if (response.ok) {
         const data = await response.json();
-        setWards(data.students || []);
+        setWards(data.wards || []);
+        setStats(data.stats);
       }
     } catch (error) {
-      console.error("Error fetching wards:", error);
+      console.error("Error fetching parent dashboard:", error);
     } finally {
       setIsLoading(false);
     }
@@ -88,9 +95,9 @@ export default function ParentDashboard() {
       <div className="p-6">
         {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <StatCard title="My Wards" value={wards.length} icon={Users} color="indigo" />
-          <StatCard title="Active Term" value="1st Term" icon={Calendar} color="blue" />
-          <StatCard title="Reports Available" value="3" icon={FileText} color="green" />
+          <StatCard title="My Wards" value={stats.wardsCount} icon={Users} color="indigo" />
+          <StatCard title="Active Term" value={stats.activeTerm} icon={Calendar} color="blue" />
+          <StatCard title="Reports Available" value={stats.reportsAvailable} icon={FileText} color="green" />
         </div>
 
         {/* Quick Actions */}

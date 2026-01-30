@@ -144,17 +144,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Sign Up Link */}
-          <p className="mt-6 text-center text-sm text-gray-600">
-            Have an account?{" "}
-            <button
-              onClick={() => router.push("/")}
-              className="text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              Sign in
-            </button>
-          </p>
-
           {/* Copyright */}
           <p className="mt-8 text-center text-xs text-gray-400">
             2026 ReSchool. All right Reserved

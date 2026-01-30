@@ -37,46 +37,34 @@ export default function TeacherStudentsPage() {
       return;
     }
 
-    checkClassTeacherStatus();
+    loadTeacherStudents();
   }, []);
 
-  const checkClassTeacherStatus = async () => {
+  const loadTeacherStudents = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/teachers/assignments", {
+      const response = await fetch("/api/teachers/students", {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
 
       if (response.ok) {
         const data = await response.json();
-        
+
         if (data.classTeacherOf) {
           setIsClassTeacher(true);
           setClassInfo(data.classTeacherOf);
-          fetchStudents(data.classTeacherOf._id);
+          setStudents(data.students || []);
         } else {
-          setLoading(false);
+          setIsClassTeacher(false);
         }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to load students");
       }
     } catch (error) {
-      console.error("Failed to fetch teacher assignments:", error);
-      setLoading(false);
-    }
-  };
-
-  const fetchStudents = async (classId: string) => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`/api/students/by-class?classId=${classId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setStudents(data.students || []);
-      }
-    } catch (error) {
-      console.error("Failed to fetch students:", error);
+      console.error("Failed to fetch teacher students:", error);
+      toast.error("Failed to load students");
     } finally {
       setLoading(false);
     }
@@ -113,7 +101,7 @@ export default function TeacherStudentsPage() {
         toast.success("Student added successfully!");
         setShowModal(false);
         setFormData({ fullName: "", admissionNumber: "", dateOfBirth: "", gender: "" });
-        fetchStudents(classInfo._id);
+        loadTeacherStudents();
       } else {
         const error = await response.json();
         toast.error(error.error || "Failed to add student");
