@@ -152,8 +152,7 @@ export default function AdminAnnouncements() {
                   onChange={(e) => setAnnouncementForm({ ...announcementForm, targetAudience: e.target.value })}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
-                  <option value="ALL">All (Teachers & Parents)</option>
-                  <option value="TEACHERS_AND_PARENTS">Teachers and Parents</option>
+                  <option value="ALL">School-wide</option>
                   <option value="TEACHERS_ONLY">Teachers Only</option>
                   <option value="PARENTS_ONLY">Parents Only</option>
                 </select>

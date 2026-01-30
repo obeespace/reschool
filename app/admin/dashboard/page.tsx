@@ -416,8 +416,7 @@ export default function AdminDashboard() {
                   onChange={(e) => setAnnouncementForm({ ...announcementForm, targetAudience: e.target.value })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-sm bg-white"
                 >
-                  <option value="ALL">All (Teachers & Parents)</option>
-                  <option value="TEACHERS_AND_PARENTS">Teachers and Parents</option>
+                  <option value="ALL">School-wide</option>
                   <option value="TEACHERS_ONLY">Teachers Only</option>
                   <option value="PARENTS_ONLY">Parents Only</option>
                 </select>
