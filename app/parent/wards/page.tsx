@@ -81,7 +81,7 @@ export default function ParentWardsPage() {
           {wards.map((ward) => (
             <div key={ward.id} className="bg-white rounded-lg shadow overflow-hidden">
               {/* Ward Header */}
-              <div className="bg-gradient-to-r from-indigo-500 to-purple-600 p-6 text-white">
+              <div className="bg-linear-to-r from-indigo-500 to-purple-600 p-6 text-white">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-xl font-bold mb-1">{ward.fullName}</h3>

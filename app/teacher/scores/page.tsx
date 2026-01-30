@@ -4,25 +4,27 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { PageHeader, Button, Modal, Input, Select, LoadingSpinner } from "@/app/components/UIComponents";
+import { PageHeader, Button, Modal, Input, Select, LoadingSpinner, DataTable } from "@/app/components/UIComponents";
+import { Plus, Trash2 } from "lucide-react";
 
 export default function TeacherScores() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<"daily" | "academic">("daily");
+  const [showDailyModal, setShowDailyModal] = useState(false);
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [formData, setFormData] = useState({
+  const [dailyMarks, setDailyMarks] = useState<any[]>([]);
+  const [academicYear, setAcademicYear] = useState<any>(null);
+  const [dailyFormData, setDailyFormData] = useState({
     studentId: "",
     classId: "",
     subjectId: "",
-    term: "1",
-    classwork: "",
-    homework: "",
-    extracurricular: "",
-    test: "",
-    exam: "",
+    type: "classwork",
+    score: "",
+    maxScore: "10",
+    notes: "",
   });
 
   useEffect(() => {
@@ -38,6 +40,20 @@ export default function TeacherScores() {
   const fetchData = async () => {
     try {
       const token = localStorage.getItem("token");
+      
+      // Fetch current academic year
+      const yearRes = await fetch("/api/academic-years/active", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (yearRes.ok) {
+        const data = await yearRes.json();
+        setAcademicYear(data.academicYear);
+        
+        // Fetch daily marks
+        if (data.academicYear) {
+          fetchDailyMarks(data.academicYear._id);
+        }
+      }
       
       // Fetch subjects
       const subjectsRes = await fetch("/api/subjects", {
@@ -58,8 +74,25 @@ export default function TeacherScores() {
       }
     } catch (error) {
       console.error("Error fetching data:", error);
+      toast.error("Failed to load data");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchDailyMarks = async (academicYearId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/scores/daily-marks/list?academicYearId=${academicYearId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDailyMarks(data.dailyMarks || []);
+      }
+    } catch (error) {
+      console.error("Error fetching daily marks:", error);
     }
   };
 
@@ -82,53 +115,62 @@ export default function TeacherScores() {
   };
 
   const handleClassChange = (classId: string) => {
-    setFormData({ ...formData, classId, studentId: "" });
+    setDailyFormData({ ...dailyFormData, classId, studentId: "" });
     fetchStudents(classId);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleDailyMarkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!dailyFormData.studentId || !dailyFormData.subjectId || !dailyFormData.score) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+
+    if (!academicYear) {
+      toast.error("No active academic year found");
+      return;
+    }
 
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/scores/upload", {
+      const response = await fetch("/api/scores/daily-marks/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          studentId: formData.studentId,
-          classId: formData.classId,
-          subjectId: formData.subjectId,
-          term: parseInt(formData.term),
-          classwork: parseFloat(formData.classwork) || 0,
-          homework: parseFloat(formData.homework) || 0,
-          extracurricular: parseFloat(formData.extracurricular) || 0,
-          test: parseFloat(formData.test) || 0,
-          exam: parseFloat(formData.exam) || 0,
+          studentId: dailyFormData.studentId,
+          subjectId: dailyFormData.subjectId,
+          classId: dailyFormData.classId,
+          type: dailyFormData.type,
+          score: parseFloat(dailyFormData.score),
+          maxScore: parseFloat(dailyFormData.maxScore) || 10,
+          notes: dailyFormData.notes,
+          academicYearId: academicYear._id,
         }),
       });
 
       if (response.ok) {
-        toast.success("Score uploaded successfully!");
-        setShowModal(false);
-        setFormData({
+        toast.success("Daily mark recorded successfully!");
+        setShowDailyModal(false);
+        setDailyFormData({
           studentId: "",
           classId: "",
           subjectId: "",
-          term: "1",
-          classwork: "",
-          homework: "",
-          extracurricular: "",
-          test: "",
-          exam: "",
+          type: "classwork",
+          score: "",
+          maxScore: "10",
+          notes: "",
         });
+        fetchDailyMarks(academicYear._id);
       } else {
         const error = await response.json();
-        toast.error(error.error || "Failed to upload score");
+        toast.error(error.error || "Failed to record daily mark");
       }
     } catch (error) {
+      console.error("Error:", error);
       toast.error("An error occurred");
     }
   };
@@ -145,147 +187,196 @@ export default function TeacherScores() {
     <DashboardLayout role="TEACHER">
       <PageHeader
         title="Upload Scores"
-        description="Enter student scores for your assigned subjects"
+        description="Manage daily marks and academic records"
         action={
-          <Button onClick={() => setShowModal(true)}>+ Upload Score</Button>
+          activeTab === "daily" ? (
+            <Button onClick={() => setShowDailyModal(true)} className="flex items-center gap-2">
+              <Plus size={18} /> Record Daily Mark
+            </Button>
+          ) : null
         }
       />
 
-      <div className="p-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Score Breakdown (Nigerian System)</h2>
-          <div className="grid md:grid-cols-5 gap-4 text-center">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">10</div>
-              <div className="text-sm text-gray-600">Classwork</div>
-            </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">10</div>
-              <div className="text-sm text-gray-600">Homework</div>
-            </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">10</div>
-              <div className="text-sm text-gray-600">Extracurricular</div>
-            </div>
-            <div className="p-4 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">30</div>
-              <div className="text-sm text-gray-600">Test</div>
-            </div>
-            <div className="p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">60</div>
-              <div className="text-sm text-gray-600">Exam</div>
-            </div>
-          </div>
-          <div className="mt-4 text-center">
-            <div className="text-3xl font-bold text-indigo-600">100</div>
-            <div className="text-gray-600">Total Marks</div>
-          </div>
-        </div>
-
-        <div className="mt-6 bg-yellow-50 rounded-lg p-6 border-l-4 border-yellow-500">
-          <h3 className="font-semibold text-yellow-900 mb-2">⚠️ Important</h3>
-          <ul className="text-yellow-800 text-sm space-y-1">
-            <li>• You can only upload scores for subjects and classes assigned to you</li>
-            <li>• Scores are automatically calculated (max 100 marks)</li>
-            <li>• Uploading scores for an existing record will update it</li>
-          </ul>
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200">
+        <div className="flex gap-8">
+          <button
+            onClick={() => setActiveTab("daily")}
+            className={`py-3 px-4 font-medium transition-colors ${
+              activeTab === "daily"
+                ? "border-b-2 border-indigo-600 text-indigo-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Daily Marks
+          </button>
+          <button
+            onClick={() => setActiveTab("academic")}
+            className={`py-3 px-4 font-medium transition-colors ${
+              activeTab === "academic"
+                ? "border-b-2 border-indigo-600 text-indigo-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Academic Records
+          </button>
         </div>
       </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Upload Student Score">
-        <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Daily Marks Tab */}
+      {activeTab === "daily" && (
+        <div className="space-y-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Daily Marks Info:</strong> These marks track daily performance (classwork, homework, tests, extracurricular). 
+              Parents can view real-time updates. These will be cleared at the end of the academic year.
+            </p>
+          </div>
+
+          {dailyMarks.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-8 text-center">
+              <p className="text-gray-600 mb-4">No daily marks recorded yet</p>
+              <Button onClick={() => setShowDailyModal(true)}>Record Your First Daily Mark</Button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Subject</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {dailyMarks.map((mark: any, index: number) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 text-sm">{mark.studentId?.fullName}</td>
+                        <td className="px-6 py-3 text-sm">{mark.subjectId?.name}</td>
+                        <td className="px-6 py-3 text-sm">
+                          <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-medium capitalize">
+                            {mark.type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-sm font-semibold">{mark.score}/{mark.maxScore}</td>
+                        <td className="px-6 py-3 text-sm text-gray-600">
+                          {new Date(mark.date).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Academic Records Tab */}
+      {activeTab === "academic" && (
+        <div className="space-y-6">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <p className="text-sm text-green-800">
+              <strong>Academic Records:</strong> These are permanent records of tests and exams. 
+              Used for official transcripts and academic history.
+            </p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-8 text-center">
+            <p className="text-gray-600">Academic records upload feature coming soon</p>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Mark Modal */}
+      <Modal
+        isOpen={showDailyModal}
+        onClose={() => setShowDailyModal(false)}
+        title="Record Daily Mark"
+      >
+        <form onSubmit={handleDailyMarkSubmit} className="space-y-4">
           <Select
             label="Class"
-            value={formData.classId}
+            value={dailyFormData.classId}
             onChange={(e) => handleClassChange(e.target.value)}
-            options={classes.map((c) => ({
-              value: c._id,
-              label: `${c.level} ${c.arm}`,
-            }))}
+            options={[
+              { value: "", label: "Select Class" },
+              ...classes.map(c => ({ value: c._id, label: `${c.level} ${c.arm}` }))
+            ]}
             required
           />
 
           <Select
             label="Student"
-            value={formData.studentId}
-            onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-            options={students.map((s) => ({
-              value: s._id,
-              label: s.fullName,
-            }))}
+            value={dailyFormData.studentId}
+            onChange={(e) => setDailyFormData({ ...dailyFormData, studentId: e.target.value })}
+            options={[
+              { value: "", label: "Select Student" },
+              ...students.map(s => ({ value: s._id, label: s.fullName }))
+            ]}
             required
           />
 
           <Select
             label="Subject"
-            value={formData.subjectId}
-            onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
-            options={subjects.map((s) => ({
-              value: s._id,
-              label: s.name,
-            }))}
+            value={dailyFormData.subjectId}
+            onChange={(e) => setDailyFormData({ ...dailyFormData, subjectId: e.target.value })}
+            options={[
+              { value: "", label: "Select Subject" },
+              ...subjects.map(s => ({ value: s._id, label: s.name }))
+            ]}
             required
           />
 
           <Select
-            label="Term"
-            value={formData.term}
-            onChange={(e) => setFormData({ ...formData, term: e.target.value })}
+            label="Mark Type"
+            value={dailyFormData.type}
+            onChange={(e) => setDailyFormData({ ...dailyFormData, type: e.target.value })}
             options={[
-              { value: "1", label: "First Term" },
-              { value: "2", label: "Second Term" },
-              { value: "3", label: "Third Term" },
+              { value: "classwork", label: "Classwork" },
+              { value: "homework", label: "Homework" },
+              { value: "test", label: "Test" },
+              { value: "extracurricular", label: "Extracurricular" },
             ]}
             required
           />
 
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Classwork (0-10)"
+              label="Score (0-100)"
               type="number"
-              value={formData.classwork}
-              onChange={(e) => setFormData({ ...formData, classwork: e.target.value })}
-              placeholder="0"
+              value={dailyFormData.score}
+              onChange={(e) => setDailyFormData({ ...dailyFormData, score: e.target.value })}
+              placeholder="e.g., 85"
+              required
             />
-
             <Input
-              label="Homework (0-10)"
+              label="Max Score"
               type="number"
-              value={formData.homework}
-              onChange={(e) => setFormData({ ...formData, homework: e.target.value })}
-              placeholder="0"
-            />
-
-            <Input
-              label="Extracurricular (0-10)"
-              type="number"
-              value={formData.extracurricular}
-              onChange={(e) => setFormData({ ...formData, extracurricular: e.target.value })}
-              placeholder="0"
-            />
-
-            <Input
-              label="Test (0-30)"
-              type="number"
-              value={formData.test}
-              onChange={(e) => setFormData({ ...formData, test: e.target.value })}
-              placeholder="0"
-            />
-
-            <Input
-              label="Exam (0-60)"
-              type="number"
-              value={formData.exam}
-              onChange={(e) => setFormData({ ...formData, exam: e.target.value })}
-              placeholder="0"
+              value={dailyFormData.maxScore}
+              onChange={(e) => setDailyFormData({ ...dailyFormData, maxScore: e.target.value })}
+              placeholder="e.g., 10"
             />
           </div>
 
-          <div className="flex gap-3">
-            <Button type="submit" fullWidth>
-              Upload Score
-            </Button>
-            <Button variant="secondary" onClick={() => setShowModal(false)} fullWidth>
+          <Input
+            label="Notes (Optional)"
+            type="text"
+            value={dailyFormData.notes}
+            onChange={(e) => setDailyFormData({ ...dailyFormData, notes: e.target.value })}
+            placeholder="Add any comments..."
+          />
+
+          <div className="flex gap-3 pt-4">
+            <Button type="submit" className="flex-1">Record Mark</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowDailyModal(false)}
+              className="flex-1"
+            >
               Cancel
             </Button>
           </div>

@@ -4,7 +4,10 @@ const StudentSchema = new Schema(
   {
     schoolId: { type: Types.ObjectId, ref: "School", required: true },
     fullName: { type: String, required: true },
-    parentId: { type: Types.ObjectId, ref: "User", required: true },
+    admissionNumber: { type: String, required: true },
+    dateOfBirth: { type: Date, required: false },
+    gender: { type: String, enum: ["Male", "Female"], required: false },
+    parentId: { type: Types.ObjectId, ref: "User", required: false },
     currentClassId: { type: Types.ObjectId, ref: "Class", required: true }
   },
   { timestamps: true }

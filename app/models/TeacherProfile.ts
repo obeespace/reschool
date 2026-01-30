@@ -25,8 +25,7 @@ const TeacherProfileSchema = new Schema<ITeacherProfile>(
   { timestamps: true }
 );
 
-// Index for efficient queries
-TeacherProfileSchema.index({ userId: 1 });
+// Index for efficient queries (userId already indexed via unique constraint)
 TeacherProfileSchema.index({ schoolId: 1 });
 
 export default models.TeacherProfile || model<ITeacherProfile>("TeacherProfile", TeacherProfileSchema);

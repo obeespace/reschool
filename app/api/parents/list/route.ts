@@ -1,5 +1,6 @@
 import connectDB from "@/app/utils/db";
 import User from "@/app/models/User";
+import Student from "@/app/models/Students";
 import { verifyToken } from "@/app/utils/auth";
 import { allowRoles } from "@/app/utils/permissions";
 import { NextResponse } from "next/server";
@@ -18,15 +19,26 @@ export async function GET(req: Request) {
       schoolId: user!.schoolId,
       role: "PARENT",
       isActive: true
-    }).select("fullName email wardIds");
+    }).select("fullName email");
+
+    // Get ward count for each parent from Student collection
+    const parentsWithCounts = await Promise.all(
+      parents.map(async (parent) => {
+        const wardCount = await Student.countDocuments({
+          schoolId: user!.schoolId,
+          parentId: parent._id
+        });
+        return {
+          id: parent._id.toString(),
+          fullName: parent.fullName,
+          email: parent.email,
+          wardCount
+        };
+      })
+    );
 
     return NextResponse.json({
-      parents: parents.map(parent => ({
-        id: parent._id.toString(),
-        fullName: parent.fullName,
-        email: parent.email,
-        wardCount: parent.wardIds?.length || 0
-      }))
+      parents: parentsWithCounts
     });
   } catch (error: any) {
     console.error("Fetch parents error:", error);

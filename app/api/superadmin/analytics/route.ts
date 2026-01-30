@@ -11,8 +11,9 @@ export async function GET(req: Request) {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user = verifyToken(token || "");
 
+    // Only superadmins (ADMIN role with no schoolId) can access this endpoint
     if (!user || user.role !== "ADMIN" || user.schoolId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized - Superadmin access only" }, { status: 401 });
     }
 
     // Fetch all schools with counts

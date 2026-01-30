@@ -15,11 +15,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { fullName, parentId, classId } = await req.json();
+    const { fullName, admissionNumber, dateOfBirth, gender, parentId, classId } = await req.json();
 
-    if (!fullName || !classId) {
+    if (!fullName || !classId || !admissionNumber) {
       return NextResponse.json(
-        { error: "Full name and class ID are required" },
+        { error: "Full name, admission number, and class ID are required" },
         { status: 400 }
       );
     }
@@ -66,6 +66,9 @@ export async function POST(req: Request) {
     const student = await Student.create({
       schoolId: user.schoolId,
       fullName,
+      admissionNumber,
+      dateOfBirth: dateOfBirth || null,
+      gender: gender || null,
       parentId: parentId || null,
       currentClassId: classId
     });

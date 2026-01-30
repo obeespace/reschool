@@ -94,7 +94,7 @@ export default function Home() {
       </nav>
 
       {/* Hero Section */}
-      <div className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+      <div className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 bg-linear-to-br from-indigo-50 via-white to-purple-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium mb-6">
@@ -103,7 +103,7 @@ export default function Home() {
             </div>
             <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 mb-6 leading-tight">
               Modern School<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
+              <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-600 to-purple-600">
                 Management System
               </span>
             </h1>
@@ -163,7 +163,7 @@ export default function Home() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="group p-8 bg-gradient-to-br from-indigo-50 to-white rounded-2xl border border-indigo-100 hover:shadow-xl transition-all">
+            <div className="group p-8 bg-linear-to-br from-indigo-50 to-white rounded-2xl border border-indigo-100 hover:shadow-xl transition-all">
               <div className="w-14 h-14 bg-indigo-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Users className="w-7 h-7 text-white" />
               </div>
@@ -173,7 +173,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="group p-8 bg-gradient-to-br from-purple-50 to-white rounded-2xl border border-purple-100 hover:shadow-xl transition-all">
+            <div className="group p-8 bg-linear-to-br from-purple-50 to-white rounded-2xl border border-purple-100 hover:shadow-xl transition-all">
               <div className="w-14 h-14 bg-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <BarChart3 className="w-7 h-7 text-white" />
               </div>
@@ -183,7 +183,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="group p-8 bg-gradient-to-br from-pink-50 to-white rounded-2xl border border-pink-100 hover:shadow-xl transition-all">
+            <div className="group p-8 bg-linear-to-br from-pink-50 to-white rounded-2xl border border-pink-100 hover:shadow-xl transition-all">
               <div className="w-14 h-14 bg-pink-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <GraduationCap className="w-7 h-7 text-white" />
               </div>
@@ -193,7 +193,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="group p-8 bg-gradient-to-br from-blue-50 to-white rounded-2xl border border-blue-100 hover:shadow-xl transition-all">
+            <div className="group p-8 bg-linear-to-br from-blue-50 to-white rounded-2xl border border-blue-100 hover:shadow-xl transition-all">
               <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <Bell className="w-7 h-7 text-white" />
               </div>
@@ -203,7 +203,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="group p-8 bg-gradient-to-br from-emerald-50 to-white rounded-2xl border border-emerald-100 hover:shadow-xl transition-all">
+            <div className="group p-8 bg-linear-to-br from-emerald-50 to-white rounded-2xl border border-emerald-100 hover:shadow-xl transition-all">
               <div className="w-14 h-14 bg-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <BookOpen className="w-7 h-7 text-white" />
               </div>
@@ -213,7 +213,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="group p-8 bg-gradient-to-br from-amber-50 to-white rounded-2xl border border-amber-100 hover:shadow-xl transition-all">
+            <div className="group p-8 bg-linear-to-br from-amber-50 to-white rounded-2xl border border-amber-100 hover:shadow-xl transition-all">
               <div className="w-14 h-14 bg-amber-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                 <School className="w-7 h-7 text-white" />
               </div>
@@ -226,7 +226,7 @@ export default function Home() {
         </div>
       </div>
       {/* Why Choose Us */}
-      <div className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-white">
+      <div className="py-20 px-4 sm:px-6 lg:px-8 bg-linear-to-br from-gray-50 to-white">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
@@ -239,7 +239,7 @@ export default function Home() {
 
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <div className="w-16 h-16 bg-linear-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <Zap className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-gray-900">Lightning Fast</h3>
@@ -249,7 +249,7 @@ export default function Home() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <div className="w-16 h-16 bg-linear-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <Shield className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-gray-900">Secure & Reliable</h3>
@@ -259,7 +259,7 @@ export default function Home() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-pink-500 to-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <div className="w-16 h-16 bg-linear-to-br from-pink-500 to-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <CheckCircle className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-xl font-bold mb-3 text-gray-900">Easy to Use</h3>
@@ -408,7 +408,7 @@ export default function Home() {
                     />
                   </div>
 
-                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100">
+                  <div className="bg-linear-to-br from-indigo-50 to-purple-50 p-6 rounded-xl border border-indigo-100">
                     <h5 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                       <CheckCircle className="w-5 h-5 text-indigo-600" />
                       Payment Summary
@@ -426,7 +426,7 @@ export default function Home() {
                   <button
                     onClick={handlePayment}
                     disabled={isProcessing || !formData.schoolName || !formData.adminEmail || !formData.adminPassword}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-xl text-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                    className="w-full bg-linear-to-r from-green-600 to-emerald-600 text-white py-4 rounded-xl text-lg font-semibold hover:from-green-700 hover:to-emerald-700 transition-all disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
                   >
                     {isProcessing ? (
                       <>

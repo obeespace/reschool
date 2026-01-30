@@ -195,7 +195,7 @@ export default function AdminDashboard() {
             <Link href="/admin/academic-years" prefetch={true}>
               <button
                 onClick={() => handleNavigation("/admin/academic-years")}
-                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-gradient-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
+                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-indigo-100 group-hover:bg-indigo-200 rounded-lg transition-colors">
@@ -210,7 +210,7 @@ export default function AdminDashboard() {
             <Link href="/admin/subjects" prefetch={true}>
               <button
                 onClick={() => handleNavigation("/admin/subjects")}
-                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-gradient-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
+                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-green-100 group-hover:bg-green-200 rounded-lg transition-colors">
@@ -225,7 +225,7 @@ export default function AdminDashboard() {
             <Link href="/admin/classes" prefetch={true}>
               <button
                 onClick={() => handleNavigation("/admin/classes")}
-                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-gradient-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
+                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-blue-100 group-hover:bg-blue-200 rounded-lg transition-colors">
@@ -240,7 +240,7 @@ export default function AdminDashboard() {
             <Link href="/admin/teachers" prefetch={true}>
               <button
                 onClick={() => handleNavigation("/admin/teachers")}
-                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-gradient-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
+                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-purple-100 group-hover:bg-purple-200 rounded-lg transition-colors">
@@ -255,7 +255,7 @@ export default function AdminDashboard() {
             <Link href="/admin/students" prefetch={true}>
               <button
                 onClick={() => handleNavigation("/admin/students")}
-                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-gradient-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
+                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-amber-100 group-hover:bg-amber-200 rounded-lg transition-colors">
@@ -270,7 +270,7 @@ export default function AdminDashboard() {
             <Link href="/admin/reports" prefetch={true}>
               <button
                 onClick={() => handleNavigation("/admin/reports")}
-                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-gradient-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
+                className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="p-2.5 bg-emerald-100 group-hover:bg-emerald-200 rounded-lg transition-colors">

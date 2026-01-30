@@ -143,7 +143,7 @@ export default function AdminReportsPage() {
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Current Academic Year</h2>
         {stats.activeAcademicYear ? (
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
+          <div className="bg-linear-to-r from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-90">Active Session</p>

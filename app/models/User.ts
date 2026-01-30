@@ -1,7 +1,7 @@
 import mongoose, { Schema, model, models, Document } from "mongoose";
 
 export interface IUser extends Document {
-  schoolId: mongoose.Types.ObjectId;
+  schoolId?: mongoose.Types.ObjectId | null;
   fullName: string;
   email: string;
   passwordHash: string;
@@ -11,7 +11,7 @@ export interface IUser extends Document {
 
 const UserSchema = new Schema<IUser>(
   {
-    schoolId: { type: Schema.Types.ObjectId, ref: "School", required: true },
+    schoolId: { type: Schema.Types.ObjectId, ref: "School", required: false, default: null },
     fullName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },

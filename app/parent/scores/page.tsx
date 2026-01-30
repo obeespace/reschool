@@ -116,7 +116,7 @@ function ParentScoresContent() {
         {selectedWardData && (
           <>
             {/* Summary Card */}
-            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 mb-6 text-white">
+            <div className="bg-linear-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 mb-6 text-white">
               <div className="grid md:grid-cols-3 gap-6">
                 <div>
                   <div className="text-indigo-200 text-sm">Student Name</div>

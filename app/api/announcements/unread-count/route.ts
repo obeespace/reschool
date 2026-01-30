@@ -42,7 +42,7 @@ export async function GET(req: Request) {
         parentId: user.userId 
       }).select("currentClassId");
       
-      const wardClassIds = wards.map(w => w.currentClassId).filter(Boolean);
+      const wardClassIds = wards.map((w: any) => w.currentClassId).filter(Boolean);
 
       announcementsQuery = {
         schoolId: user.schoolId,

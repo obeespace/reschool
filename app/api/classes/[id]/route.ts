@@ -73,8 +73,8 @@ export async function GET(
     // Calculate statistics
     const stats = {
       totalStudents: students.length,
-      maleStudents: students.filter(s => s.gender === "MALE").length,
-      femaleStudents: students.filter(s => s.gender === "FEMALE").length,
+      maleStudents: students.filter((s: any) => s.gender === "MALE").length,
+      femaleStudents: students.filter((s: any) => s.gender === "FEMALE").length,
       totalSubjects: classDoc.subjectIds?.length || 0,
       hasClassTeacher: !!classDoc.classTeacherId
     };
@@ -90,7 +90,7 @@ export async function GET(
         email: classDoc.classTeacherId.email
       } : null,
       subjects: classDoc.subjectIds || [],
-      students: students.map(s => ({
+      students: students.map((s: any) => ({
         _id: s._id,
         fullName: s.fullName,
         registrationNumber: s.registrationNumber,

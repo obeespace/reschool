@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     // Get all children of this parent
     const students = await Student.find({
       schoolId: parent.schoolId,
-      parentId: parent.id
+      parentId: parent.userId
     });
 
     if (students.length === 0) {

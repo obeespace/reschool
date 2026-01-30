@@ -87,6 +87,8 @@ export default function ParentsPage() {
       return;
     }
 
+    // Ward selection is optional - parent can be created without wards
+
     try {
       const token = localStorage.getItem("token");
       const response = await fetch("/api/users/create", {

@@ -120,27 +120,27 @@ export default function ClassDetailsPage() {
       <div className="p-6">
         {/* Stats Cards */}
         <div className="grid md:grid-cols-5 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
             <div className="text-3xl font-bold mb-1">{classDetails.stats.totalStudents}</div>
             <div className="text-blue-100 text-sm">Total Students</div>
           </div>
           
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
             <div className="text-3xl font-bold mb-1">{classDetails.stats.maleStudents}</div>
             <div className="text-purple-100 text-sm">Male Students</div>
           </div>
           
-          <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-pink-500 to-pink-600 rounded-lg shadow-lg p-6 text-white">
             <div className="text-3xl font-bold mb-1">{classDetails.stats.femaleStudents}</div>
             <div className="text-pink-100 text-sm">Female Students</div>
           </div>
           
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
             <div className="text-3xl font-bold mb-1">{classDetails.stats.totalSubjects}</div>
             <div className="text-green-100 text-sm">Subjects</div>
           </div>
           
-          <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-indigo-500 to-indigo-600 rounded-lg shadow-lg p-6 text-white">
             <div className="text-3xl font-bold mb-1">
               {classDetails.stats.hasClassTeacher ? "✓" : "✗"}
             </div>

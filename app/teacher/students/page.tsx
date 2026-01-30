@@ -5,22 +5,29 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, DataTable, Modal, Button, Input, Select } from "@/app/components/UIComponents";
+import { Trash2, Edit2, Eye } from "lucide-react";
 
 interface Student {
-  id: string;
+  _id: string;
+  id?: string;
   fullName: string;
   admissionNumber: string;
-  dateOfBirth: string;
-  gender: string;
+  dateOfBirth?: string;
+  gender?: string;
+  parentId?: string;
 }
 
 export default function TeacherStudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
   const [classInfo, setClassInfo] = useState<any>(null);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     fullName: "",
     admissionNumber: "",
@@ -70,6 +77,100 @@ export default function TeacherStudentsPage() {
     }
   };
 
+  const handleDelete = async (studentId: string) => {
+    setDeletingId(studentId);
+    const toastId = toast.custom((t) => (
+      <div className="bg-white rounded-lg p-4 shadow-lg border border-gray-200 space-y-3">
+        <p className="font-medium text-gray-900">Delete this student?</p>
+        <p className="text-sm text-gray-600">This action cannot be undone.</p>
+        <div className="flex gap-2 pt-2">
+          <button
+            onClick={async () => {
+              toast.dismiss(toastId);
+              try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`/api/students/delete/${studentId}`, {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+
+                if (response.ok) {
+                  toast.success("Student deleted successfully!");
+                  loadTeacherStudents();
+                } else {
+                  const error = await response.json();
+                  toast.error(error.error || "Failed to delete student");
+                }
+              } catch (error) {
+                console.error("Delete error:", error);
+                toast.error("Failed to delete student");
+              } finally {
+                setDeletingId(null);
+              }
+            }}
+            className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(toastId);
+              setDeletingId(null);
+            }}
+            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ));
+  };
+
+  const handleEditClick = (student: Student) => {
+    setSelectedStudent(student);
+    setFormData({
+      fullName: student.fullName,
+      admissionNumber: student.admissionNumber,
+      dateOfBirth: student.dateOfBirth || "",
+      gender: student.gender || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedStudent) return;
+    if (!formData.fullName || !formData.admissionNumber) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/students/update/${selectedStudent.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.ok) {
+        toast.success("Student updated successfully!");
+        setShowEditModal(false);
+        setSelectedStudent(null);
+        loadTeacherStudents();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to update student");
+      }
+    } catch (error) {
+      toast.error("Failed to update student");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -93,7 +194,7 @@ export default function TeacherStudentsPage() {
         },
         body: JSON.stringify({
           ...formData,
-          currentClassId: classInfo._id,
+          classId: classInfo._id,
         }),
       });
 
@@ -119,7 +220,47 @@ export default function TeacherStudentsPage() {
       accessor: "dateOfBirth" as keyof Student,
       render: (value: any) => value ? new Date(value).toLocaleDateString() : 'N/A'
     },
-    { header: "Gender", accessor: "gender" as keyof Student }
+    { header: "Gender", accessor: "gender" as keyof Student },
+    {
+      header: "Actions",
+      accessor: "_id" as keyof Student,
+      render: (studentId: any, row: Student) => (
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedStudent(row);
+              setShowDetailsModal(true);
+            }}
+            className="p-2 hover:bg-blue-100 rounded text-blue-600 transition-colors"
+            title="View details"
+          >
+            <Eye size={18} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditClick(row);
+            }}
+            className="p-2 hover:bg-green-100 rounded text-green-600 transition-colors"
+            title="Edit student"
+          >
+            <Edit2 size={18} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(studentId);
+            }}
+            disabled={deletingId === studentId}
+            className="p-2 hover:bg-red-100 rounded text-red-600 transition-colors disabled:opacity-50"
+            title="Delete student"
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
+      )
+    }
   ];
 
   if (loading) {
@@ -171,7 +312,7 @@ export default function TeacherStudentsPage() {
         }
       />
 
-      <div className="mb-6 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+      <div className="mb-6 bg-linear-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
         <h3 className="text-lg font-semibold mb-1">Your Class</h3>
         <p className="text-2xl font-bold">{classInfo?.level} {classInfo?.arm}</p>
         <p className="text-sm mt-2 opacity-90">
@@ -242,6 +383,122 @@ export default function TeacherStudentsPage() {
               type="button"
               variant="secondary"
               onClick={() => setShowModal(false)}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* View Details Modal */}
+      <Modal
+        isOpen={showDetailsModal}
+        onClose={() => setShowDetailsModal(false)}
+        title="Student Details"
+      >
+        {selectedStudent && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm text-gray-600 font-medium">Full Name</label>
+                <p className="text-lg font-semibold mt-1">{selectedStudent.fullName}</p>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 font-medium">Admission Number</label>
+                <p className="text-lg font-semibold mt-1">{selectedStudent.admissionNumber}</p>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 font-medium">Gender</label>
+                <p className="text-lg font-semibold mt-1">{selectedStudent.gender || 'N/A'}</p>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 font-medium">Date of Birth</label>
+                <p className="text-lg font-semibold mt-1">
+                  {selectedStudent.dateOfBirth ? new Date(selectedStudent.dateOfBirth).toLocaleDateString() : 'N/A'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+              <p><strong>Class:</strong> {classInfo?.level} {classInfo?.arm}</p>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => {
+                  setShowDetailsModal(false);
+                  handleEditClick(selectedStudent);
+                }}
+                className="flex-1"
+              >
+                Edit Student
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowDetailsModal(false)}
+                className="flex-1"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Student"
+      >
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <Input
+            label="Full Name"
+            type="text"
+            value={formData.fullName}
+            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+            placeholder="e.g., Chukwuemeka Obi"
+            required
+          />
+          
+          <Input
+            label="Admission Number"
+            type="text"
+            value={formData.admissionNumber}
+            onChange={(e) => setFormData({ ...formData, admissionNumber: e.target.value })}
+            placeholder="e.g., 2024/JSS1/001"
+            required
+          />
+          
+          <Input
+            label="Date of Birth"
+            type="date"
+            value={formData.dateOfBirth}
+            onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+          />
+
+          <Select
+            label="Gender"
+            value={formData.gender}
+            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+            options={[
+              { value: "", label: "Select Gender" },
+              { value: "Male", label: "Male" },
+              { value: "Female", label: "Female" }
+            ]}
+          />
+
+          <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
+            <p><strong>Note:</strong> Student in {classInfo?.level} {classInfo?.arm}</p>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button type="submit" className="flex-1">Save Changes</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowEditModal(false)}
               className="flex-1"
             >
               Cancel
