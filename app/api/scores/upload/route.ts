@@ -4,6 +4,7 @@ import TeacherProfile from "@/app/models/TeacherProfile";
 import TeacherActivity from "@/app/models/TeacherActivity";
 import AcademicYear from "@/app/models/AcademicYear";
 import { verifyToken } from "@/app/utils/auth";
+import { checkTermAccess } from "@/app/utils/termGuard";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -14,6 +15,16 @@ export async function POST(req: Request) {
 
     if (!teacher || teacher.role !== "TEACHER") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    // Check if current term is paid and accessible
+    try {
+      await checkTermAccess(teacher.schoolId);
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 402 } // 402 Payment Required
+      );
     }
 
     const {

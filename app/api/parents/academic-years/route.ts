@@ -1,5 +1,5 @@
 import connectDB from "@/app/utils/db";
-import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
 import Student from "@/app/models/Students";
 import StudentClassHistory from "@/app/models/StudentClassHistory";
 import { verifyToken } from "@/app/utils/auth";
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     });
 
     if (students.length === 0) {
-      return NextResponse.json({ academicYears: [] });
+      return NextResponse.json({ terms: [] });
     }
 
     const studentIds = students.map((s) => s._id);
@@ -33,23 +33,30 @@ export async function GET(req: Request) {
       studentId: { $in: studentIds }
     }).distinct("academicYearId");
 
-    // Fetch the academic year details
-    const academicYears = await AcademicYear.find({
-      _id: { $in: classHistories }
-    }).sort({ startDate: -1 });
+    // Fetch all paid terms for these academic years (parents can only access paid terms)
+    const terms = await Term.find({
+      schoolId: parent.schoolId,
+      academicYearId: { $in: classHistories },
+      isPaid: true
+    })
+      .populate("academicYearId", "name")
+      .sort({ startDate: -1 });
 
     return NextResponse.json({
-      academicYears: academicYears.map(year => ({
-        id: year._id.toString(),
-        name: year.name,
-        startDate: year.startDate,
-        endDate: year.endDate,
-        isActive: year.isActive,
-        term: year.term
+      terms: terms.map(term => ({
+        id: term._id.toString(),
+        academicYear: (term.academicYearId as any)?.name || "N/A",
+        academicYearId: term.academicYearId.toString(),
+        termNumber: term.termNumber,
+        startDate: term.startDate,
+        endDate: term.endDate,
+        isActive: term.isActive,
+        isPaid: term.isPaid,
+        isClosed: term.isClosed
       }))
     });
   } catch (error: any) {
-    console.error("Fetch parent academic years error:", error);
+    console.error("Fetch academic years error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to fetch academic years" },
       { status: 500 }

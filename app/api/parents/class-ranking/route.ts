@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const students = await Student.find({ parentId: parent.id });
+  const students = await Student.find({ parentId: parent.userId });
   
   if (students.length === 0) {
     return NextResponse.json({ rankings: [] });

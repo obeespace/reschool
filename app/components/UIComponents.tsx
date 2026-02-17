@@ -1,28 +1,28 @@
 import { ReactNode, memo } from "react";
 import { LucideIcon } from "lucide-react";
+import { STAT_CARD_COLORS, BUTTON_VARIANTS, THEME, mergeThemeClasses } from "@/app/lib/theme";
 
 interface CardProps {
   title: string;
   value: string | number;
   icon: LucideIcon;
-  color?: string;
+  color?: keyof typeof STAT_CARD_COLORS;
   trend?: { value: number; isPositive: boolean };
 }
 
 export const StatCard = memo(function StatCard({ title, value, icon: Icon, color = "indigo", trend }: CardProps) {
-  const colorClasses = {
-    indigo: { bg: "bg-indigo-50", icon: "text-indigo-600", trend: "text-indigo-600" },
-    green: { bg: "bg-green-50", icon: "text-green-600", trend: "text-green-600" },
-    yellow: { bg: "bg-amber-50", icon: "text-amber-600", trend: "text-amber-600" },
-    red: { bg: "bg-red-50", icon: "text-red-600", trend: "text-red-600" },
-    blue: { bg: "bg-blue-50", icon: "text-blue-600", trend: "text-blue-600" },
-    purple: { bg: "bg-purple-50", icon: "text-purple-600", trend: "text-purple-600" },
-  };
-
-  const colors = colorClasses[color as keyof typeof colorClasses] || colorClasses.indigo;
+  const colors = STAT_CARD_COLORS[color] || STAT_CARD_COLORS.indigo;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+    <div className={mergeThemeClasses(
+      THEME.component.card.backgroundColor,
+      THEME.component.card.border,
+      THEME.component.card.borderRadius,
+      THEME.component.card.padding,
+      THEME.component.card.shadow,
+      THEME.component.card.hover,
+      THEME.component.card.transition
+    )}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <p className="text-gray-600 text-sm font-medium mb-1">{title}</p>
@@ -35,7 +35,7 @@ export const StatCard = memo(function StatCard({ title, value, icon: Icon, color
             </p>
           )}
         </div>
-        <div className={`${colors.bg} p-3 rounded-lg`}>
+        <div className={`${colors.bg} ${THEME.component.card.borderRadius} p-3`}>
           <Icon className={colors.icon} size={24} />
         </div>
       </div>
@@ -61,16 +61,28 @@ export const DataTable = memo(function DataTable({ headers, data, columns, onRow
   const isColumnsFormat = columns && columns.length > 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div className={mergeThemeClasses(
+      THEME.component.card.backgroundColor,
+      THEME.component.card.border,
+      THEME.component.card.borderRadius,
+      "overflow-hidden"
+    )}>
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className={mergeThemeClasses(
+            THEME.component.table.headerBg,
+            THEME.component.table.headerBorder
+          )}>
             <tr>
               {isColumnsFormat ? (
                 columns.map((col, index) => (
                   <th
                     key={index}
-                    className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
+                    className={mergeThemeClasses(
+                      THEME.component.table.cellPadding,
+                      THEME.component.table.headerText,
+                      "text-left"
+                    )}
                   >
                     {col.header}
                   </th>
@@ -79,7 +91,11 @@ export const DataTable = memo(function DataTable({ headers, data, columns, onRow
                 headers?.map((header, index) => (
                   <th
                     key={index}
-                    className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"
+                    className={mergeThemeClasses(
+                      THEME.component.table.cellPadding,
+                      THEME.component.table.headerText,
+                      "text-left"
+                    )}
                   >
                     {header}
                   </th>
@@ -87,16 +103,23 @@ export const DataTable = memo(function DataTable({ headers, data, columns, onRow
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className={THEME.component.table.bodyBorder}>
             {isColumnsFormat ? (
               (data as any[]).map((row, rowIndex) => (
                 <tr
                   key={rowIndex}
                   onClick={() => onRowClick && onRowClick(rowIndex)}
-                  className={onRowClick ? "cursor-pointer hover:bg-gray-50 transition-colors" : ""}
+                  className={mergeThemeClasses(
+                    onRowClick ? "cursor-pointer" : "",
+                    THEME.component.table.rowHover,
+                    THEME.transition.base
+                  )}
                 >
                   {columns!.map((col, cellIndex) => (
-                    <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td key={cellIndex} className={mergeThemeClasses(
+                      THEME.component.table.cellPadding,
+                      "whitespace-nowrap text-sm text-gray-900"
+                    )}>
                       {col.render ? col.render(row[col.accessor], row) : row[col.accessor]}
                     </td>
                   ))}
@@ -107,10 +130,17 @@ export const DataTable = memo(function DataTable({ headers, data, columns, onRow
                 <tr
                   key={rowIndex}
                   onClick={() => onRowClick && onRowClick(rowIndex)}
-                  className={onRowClick ? "cursor-pointer hover:bg-gray-50 transition-colors" : ""}
+                  className={mergeThemeClasses(
+                    onRowClick ? "cursor-pointer" : "",
+                    THEME.component.table.rowHover,
+                    THEME.transition.base
+                  )}
                 >
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td key={cellIndex} className={mergeThemeClasses(
+                      THEME.component.table.cellPadding,
+                      "whitespace-nowrap text-sm text-gray-900"
+                    )}>
                       {cell}
                     </td>
                   ))}
@@ -135,8 +165,8 @@ export const Modal = memo(function Modal({ isOpen, onClose, title, children }: M
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="border-b border-gray-100 px-6 py-4 flex justify-between items-center sticky top-0 bg-white">
           <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <button
@@ -192,15 +222,15 @@ export const Button = memo(function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`
-        ${variantClasses[variant]}
-        ${sizeClasses[size]}
-        ${fullWidth ? "w-full" : ""}
-        ${className}
-        rounded-lg font-medium transition-all
-        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none
-        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2
-      `}
+      className={mergeThemeClasses(
+        variantClasses[variant as keyof typeof variantClasses] || variantClasses.primary,
+        sizeClasses[size],
+        fullWidth ? "w-full" : "",
+        className,
+        "rounded-lg font-medium transition-all",
+        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none",
+        "focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+      )}
     >
       {children}
     </button>
@@ -226,7 +256,10 @@ export const Input = memo(function Input({
 }: InputProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
+      <label className={mergeThemeClasses(
+        THEME.typography.label,
+        "mb-2 block"
+      )}>
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <input
@@ -258,7 +291,10 @@ export const Select = memo(function Select({
 }: SelectProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
+      <label className={mergeThemeClasses(
+        THEME.typography.label,
+        "mb-2 block"
+      )}>
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       <select
@@ -296,11 +332,21 @@ interface PageHeaderProps {
 
 export const PageHeader = memo(function PageHeader({ title, description, action }: PageHeaderProps) {
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-6">
+    <div className={mergeThemeClasses(
+      THEME.component.card.backgroundColor,
+      THEME.component.card.border,
+      "border-b px-6 py-6"
+    )}>
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-          {description && <p className="text-gray-600 mt-1 text-sm">{description}</p>}
+          <h1 className="text-4xl font-bold text-gray-900">
+            {title}
+          </h1>
+          {description && (
+            <p className="text-sm text-gray-600 mt-1">
+              {description}
+            </p>
+          )}
         </div>
         {action && <div>{action}</div>}
       </div>

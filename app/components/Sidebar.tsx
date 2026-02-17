@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { ReactNode, useEffect, useState, memo, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
+import { THEME, mergeThemeClasses } from "@/app/lib/theme";
 
 // Lazy load icons to reduce initial bundle size
 const LayoutDashboard = dynamic(() => import("lucide-react").then(mod => ({ default: mod.LayoutDashboard })), { ssr: false });
@@ -53,6 +54,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
       { name: "Students", path: "/admin/students", icon: GraduationCap },
       { name: "Parents", path: "/admin/parents", icon: UsersRound },
       { name: "Reports", path: "/admin/reports", icon: BarChart3 },
+      { name: "My Profile", path: "/admin/profile", icon: User },
     ];
 
     const teacherLinks = [
@@ -69,6 +71,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
       { name: "Announcements", path: "/parent/announcements", icon: Megaphone },
       { name: "My Wards", path: "/parent/wards", icon: UsersRound },
       { name: "Scores", path: "/parent/scores", icon: BarChart3 },
+      { name: "My Profile", path: "/parent/profile", icon: User },
     ];
 
     return role === "ADMIN" ? adminLinks : role === "TEACHER" ? teacherLinks : parentLinks;
@@ -129,7 +132,10 @@ function DashboardLayout({ role, children }: SidebarProps) {
   }, [router]);
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className={mergeThemeClasses(
+      "flex min-h-screen",
+      "bg-gray-50"
+    )}>
       {/* Mobile Overlay Backdrop - Only when expanded */}
       {!sidebarCollapsed && (
         <div 
@@ -139,18 +145,35 @@ function DashboardLayout({ role, children }: SidebarProps) {
       )}
 
       {/* Sidebar */}
-      <div className={`${!sidebarCollapsed ? 'fixed lg:relative' : 'relative'} ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-gray-200 min-h-screen flex flex-col transition-all duration-300 shadow-sm z-50 lg:z-0`}>
+      <div className={mergeThemeClasses(
+        !sidebarCollapsed ? 'fixed lg:relative' : 'relative',
+        sidebarCollapsed ? 'w-20' : 'w-64',
+        THEME.component.sidebar.backgroundColor,
+        THEME.component.sidebar.border,
+        'min-h-screen flex flex-col transition-all duration-300',
+        THEME.component.sidebar.shadow,
+        'z-50 lg:z-0'
+      )}>
         {/* Header */}
-        <div className={`${sidebarCollapsed ? 'p-4' : 'p-6'} border-b border-gray-200 flex items-center justify-between`}>
+        <div className={mergeThemeClasses(
+          sidebarCollapsed ? 'p-4' : 'p-6',
+          THEME.component.sidebar.borderBottom,
+          'flex items-center justify-between'
+        )}>
           {!sidebarCollapsed && (
             <div>
-              <h1 className="text-xl font-bold text-gray-900">ReSchool</h1>
+              <h1 className={mergeThemeClasses(
+                THEME.typography.h2,
+                "text-gray-900 font-bold"
+              )}>ReSchool</h1>
               <p className="text-gray-500 text-xs mt-0.5 uppercase tracking-wide">{role}</p>
             </div>
           )}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className={mergeThemeClasses(
+              "relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            )}
           >
             {sidebarCollapsed ? <Menu size={20} className="text-gray-600" /> : <ChevronLeft size={20} className="text-gray-600" />}
           </button>
@@ -167,14 +190,18 @@ function DashboardLayout({ role, children }: SidebarProps) {
                   <Link href={link.path} prefetch={true}>
                     <button
                       onClick={() => handleNavigation(link.path)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${
+                      className={mergeThemeClasses(
+                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
                         isActive
                           ? "bg-indigo-50 text-indigo-700"
                           : "text-gray-700 hover:bg-gray-50"
-                      }`}
+                      )}
                       title={sidebarCollapsed ? link.name : undefined}
                     >
-                      <Icon size={20} className={`${isActive ? 'text-indigo-600' : 'text-gray-500 group-hover:text-gray-700'} shrink-0`} />
+                      <Icon size={20} className={mergeThemeClasses(
+                        isActive ? 'text-indigo-600' : 'text-gray-500 group-hover:text-gray-700',
+                        'shrink-0'
+                      )} />
                       {!sidebarCollapsed && <span className="font-medium text-sm">{link.name}</span>}
                     </button>
                   </Link>
@@ -185,13 +212,18 @@ function DashboardLayout({ role, children }: SidebarProps) {
         </nav>
 
         {/* Logout Button */}
-        <div className="p-3 border-t border-gray-200">
+        <div className={mergeThemeClasses(
+          "p-3",
+          THEME.component.sidebar.borderTop
+        )}>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all group"
+            className={mergeThemeClasses(
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+            )}
             title={sidebarCollapsed ? "Logout" : undefined}
           >
-            <LogOut size={20} className="text-gray-500 group-hover:text-red-600 shrink-0" />
+            <LogOut size={20} className="text-gray-500 hover:text-red-600 shrink-0" />
             {!sidebarCollapsed && <span className="font-medium text-sm">Logout</span>}
           </button>
         </div>
@@ -200,7 +232,12 @@ function DashboardLayout({ role, children }: SidebarProps) {
       {/* Main Content */}
       <div className="flex-1 overflow-auto flex flex-col w-full lg:w-auto">
         {/* Top Bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+        <div className={mergeThemeClasses(
+          THEME.component.card.backgroundColor,
+          THEME.component.card.border,
+          "border-b px-6 py-4 flex justify-between items-center sticky top-0 z-10",
+          THEME.component.card.shadow
+        )}>
           <div className="flex items-center gap-4">
             <h2 className="text-sm text-gray-600">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -238,7 +275,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
 
               {/* Notification Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-100 z-50">
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50">
                   <div className="p-4 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="font-semibold text-gray-900">Notifications</h3>
                     <button
@@ -247,7 +284,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
                         router.push(announcementsPath);
                         setShowNotifications(false);
                       }}
-                      className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                      className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
                     >
                       View All
                     </button>

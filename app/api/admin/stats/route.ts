@@ -7,6 +7,7 @@ import User from "@/app/models/User";
 import Student from "@/app/models/Students";
 import Class from "@/app/models/Class";
 import Subject from "@/app/models/Subject";
+import Term from "@/app/models/Term";
 
 export async function GET(req: Request) {
   try {
@@ -22,6 +23,12 @@ export async function GET(req: Request) {
 
     // Fetch school info
     const school = await School.findById(schoolId);
+
+    // Get active term info
+    const activeTerm = await Term.findOne({
+      schoolId,
+      isActive: true
+    }).populate("academicYearId", "name");
 
     // Count users by role
     const teachers = await User.countDocuments({ schoolId, role: "TEACHER" });
@@ -39,6 +46,14 @@ export async function GET(req: Request) {
         classes,
         subjects,
       },
+      activeTerm: activeTerm ? {
+        academicYear: (activeTerm.academicYearId as any)?.name || "N/A",
+        term: activeTerm.termNumber,
+        isPaid: activeTerm.isPaid,
+        isClosed: activeTerm.isClosed,
+        startDate: activeTerm.startDate,
+        endDate: activeTerm.endDate
+      } : null
     });
   } catch (error: any) {
     console.error("Error fetching admin stats:", error);

@@ -16,6 +16,7 @@ export async function GET(req: Request) {
 
     const students = await Student.find({ schoolId: user!.schoolId })
       .populate("currentClassId", "level arm")
+      .populate("parentId", "fullName email")
       .sort({ admissionNumber: 1 });
 
     return NextResponse.json({
@@ -28,7 +29,17 @@ export async function GET(req: Request) {
           arm: (student.currentClassId as any).arm
         } : null,
         dateOfBirth: student.dateOfBirth,
-        gender: student.gender
+        gender: student.gender,
+        parent: student.parentId ? {
+          id: (student.parentId as any)._id?.toString?.() || null,
+          fullName: (student.parentId as any).fullName,
+          email: (student.parentId as any).email
+        } : null,
+        isPrefect: student.isPrefect,
+        prefectTitle: student.prefectTitle || null,
+        isSuspended: student.isSuspended,
+        suspendedAt: student.suspendedAt || null,
+        suspendedReason: student.suspendedReason || null
       }))
     });
   } catch (error: any) {

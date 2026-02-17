@@ -14,7 +14,19 @@ const ScoreSchema = new Schema(
     test: { type: Number, default: 0, min: 0, max: 30 },
     exam: { type: Number, default: 0, min: 0, max: 60 },
     total: { type: Number, default: 0 },
-    teacherId: { type: Types.ObjectId, ref: "User", required: true }
+    teacherId: { type: Types.ObjectId, ref: "User", required: true },
+    
+    // Audit trail
+    modificationHistory: [
+      {
+        modifiedDate: { type: Date, default: Date.now },
+        field: String,
+        oldValue: Number,
+        newValue: Number,
+        modifiedBy: { type: Types.ObjectId, ref: "User" },
+        reason: String
+      }
+    ]
   },
   { timestamps: true }
 );
@@ -33,5 +45,7 @@ ScoreSchema.index({
   term: 1, 
   academicYearId: 1 
 }, { unique: true });
+
+ScoreSchema.index({ schoolId: 1, term: 1, studentId: 1 });
 
 export default models.Score || model("Score", ScoreSchema);

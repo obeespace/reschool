@@ -2,7 +2,9 @@ import connectDB from "@/app/utils/db";
 import Student from "@/app/models/Students";
 import TeacherProfile from "@/app/models/TeacherProfile";
 import Class from "@/app/models/Class";
+import User from "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
+import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -15,7 +17,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { fullName, admissionNumber, dateOfBirth, gender, parentId, classId } = await req.json();
+    const {
+      fullName,
+      admissionNumber,
+      dateOfBirth,
+      gender,
+      parentId,
+      parentFullName,
+      parentEmail,
+      parentPassword,
+      classId
+    } = await req.json();
 
     if (!fullName || !classId || !admissionNumber) {
       return NextResponse.json(
@@ -63,13 +75,64 @@ export async function POST(req: Request) {
       );
     }
 
+    const existingStudent = await Student.findOne({
+      schoolId: user.schoolId,
+      admissionNumber
+    });
+
+    if (existingStudent) {
+      return NextResponse.json(
+        { error: "Admission number already exists" },
+        { status: 400 }
+      );
+    }
+
+    let linkedParentId = parentId || null;
+    let temporaryParentPassword: string | null = null;
+
+    if (!linkedParentId && parentEmail && parentFullName) {
+      const existingParent = await User.findOne({ email: parentEmail });
+
+      if (existingParent) {
+        if (existingParent.role !== "PARENT") {
+          return NextResponse.json(
+            { error: "Email already belongs to a non-parent account" },
+            { status: 400 }
+          );
+        }
+
+        if (existingParent.schoolId?.toString() !== user.schoolId) {
+          return NextResponse.json(
+            { error: "Parent account belongs to a different school" },
+            { status: 400 }
+          );
+        }
+
+        linkedParentId = existingParent._id;
+      } else {
+        const rawPassword = parentPassword || Math.random().toString(36).slice(2, 10);
+        const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+        const newParent = await User.create({
+          fullName: parentFullName,
+          email: parentEmail,
+          passwordHash,
+          role: "PARENT",
+          schoolId: user.schoolId
+        });
+
+        linkedParentId = newParent._id;
+        temporaryParentPassword = parentPassword ? null : rawPassword;
+      }
+    }
+
     const student = await Student.create({
       schoolId: user.schoolId,
       fullName,
       admissionNumber,
       dateOfBirth: dateOfBirth || null,
       gender: gender || null,
-      parentId: parentId || null,
+      parentId: linkedParentId,
       currentClassId: classId
     });
 
@@ -80,6 +143,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ 
       studentId: student._id.toString(),
+      parentId: linkedParentId,
+      temporaryParentPassword,
       message: "Student created successfully"
     });
   } catch (error: any) {

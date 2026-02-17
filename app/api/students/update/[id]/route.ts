@@ -19,7 +19,17 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { fullName, admissionNumber, dateOfBirth, gender } = await req.json();
+    const {
+      fullName,
+      admissionNumber,
+      dateOfBirth,
+      gender,
+      parentId,
+      isPrefect,
+      prefectTitle,
+      isSuspended,
+      suspendedReason
+    } = await req.json();
 
     if (!fullName || !admissionNumber) {
       return NextResponse.json(
@@ -61,16 +71,25 @@ export async function PUT(
       }
     }
 
-    const updatedStudent = await Student.findByIdAndUpdate(
-      id,
-      {
-        fullName,
-        admissionNumber,
-        dateOfBirth: dateOfBirth || null,
-        gender: gender || null
-      },
-      { new: true }
-    );
+    const updatePayload: any = {
+      fullName,
+      admissionNumber,
+      dateOfBirth: dateOfBirth || null,
+      gender: gender || null
+    };
+
+    if (user.role === "ADMIN") {
+      if (parentId !== undefined) updatePayload.parentId = parentId || null;
+      if (isPrefect !== undefined) updatePayload.isPrefect = !!isPrefect;
+      if (prefectTitle !== undefined) updatePayload.prefectTitle = prefectTitle || null;
+      if (isSuspended !== undefined) {
+        updatePayload.isSuspended = !!isSuspended;
+        updatePayload.suspendedAt = isSuspended ? new Date() : null;
+        updatePayload.suspendedReason = isSuspended ? (suspendedReason || null) : null;
+      }
+    }
+
+    const updatedStudent = await Student.findByIdAndUpdate(id, updatePayload, { new: true });
 
     return NextResponse.json({
       message: "Student updated successfully",

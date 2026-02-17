@@ -1,6 +1,7 @@
 import connectDB from "@/app/utils/db";
 import DailyMark from "@/app/models/DailyMark";
 import { verifyToken } from "@/app/utils/auth";
+import { checkTermAccess } from "@/app/utils/termGuard";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -13,18 +14,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { studentId, subjectId, classId, type, score, maxScore, notes, academicYearId } = await req.json();
+    const { studentId, subjectId, classId, termId, assessmentType, score, maxScore, feedbackNotes, academicYearId } = await req.json();
 
-    if (!studentId || !subjectId || !classId || !type || score === undefined || !academicYearId) {
+    if (!studentId || !subjectId || !classId || !termId || !assessmentType || score === undefined || !academicYearId) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    if (!["classwork", "homework", "test", "extracurricular"].includes(type)) {
+    // ← NEW: Check term payment access
+    try {
+      await checkTermAccess(user.schoolId, termId);
+    } catch (error: any) {
       return NextResponse.json(
-        { error: "Invalid mark type" },
+        { error: "This term is not paid or is closed. Cannot record marks." },
+        { status: 402 } // Payment Required
+      );
+    }
+
+    if (!["CLASSWORK", "HOMEWORK", "EVALUATION", "EXAM"].includes(assessmentType)) {
+      return NextResponse.json(
+        { error: "Invalid assessment type" },
         { status: 400 }
       );
     }
@@ -42,17 +53,25 @@ export async function POST(req: Request) {
       subjectId,
       classId,
       teacherId: user.userId,
-      type,
+      assessmentType,
       score,
       maxScore: maxScore || 10,
-      notes,
+      feedbackNotes,
+      recordedDate: new Date(),
+      recordedBy: user.userId,
       academicYearId,
-      date: new Date()
+      termId,
+      modificationHistory: []
     });
 
     return NextResponse.json({
       message: "Daily mark recorded successfully",
-      dailyMark
+      dailyMark: {
+        id: dailyMark._id.toString(),
+        studentId,
+        score,
+        assessmentType
+      }
     });
 
   } catch (error: any) {

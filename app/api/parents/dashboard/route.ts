@@ -1,6 +1,6 @@
 import connectDB from "@/app/utils/db";
 import Student from "@/app/models/Students";
-import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
 import Score from "@/app/models/Score";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
@@ -19,23 +19,23 @@ export async function GET(req: Request) {
       .populate("currentClassId", "level arm")
       .lean();
 
-    const activeYear = await AcademicYear.findOne({
+    const activeTerm = await Term.findOne({
       schoolId: user.schoolId,
       isActive: true
-    }).lean();
+    }).populate("academicYearId", "name").lean();
 
     const wardIds = wards.map((w: any) => w._id);
 
-    const reportsAvailable = activeYear
+    const reportsAvailable = activeTerm && activeTerm.isPaid
       ? await Score.countDocuments({
-          academicYearId: activeYear._id,
-          term: activeYear.term,
+          academicYearId: activeTerm.academicYearId,
+          term: activeTerm.termNumber,
           studentId: { $in: wardIds }
         })
       : 0;
 
-    const termLabel = activeYear?.term
-      ? `${activeYear.term}${activeYear.term === 1 ? "st" : activeYear.term === 2 ? "nd" : "rd"} Term`
+    const termLabel = activeTerm
+      ? `${activeTerm.termNumber}${activeTerm.termNumber === 1 ? "st" : activeTerm.termNumber === 2 ? "nd" : "rd"} Term`
       : "N/A";
 
     return NextResponse.json({
@@ -43,10 +43,16 @@ export async function GET(req: Request) {
       stats: {
         wardsCount: wards.length,
         activeTerm: termLabel,
-        reportsAvailable
+        reportsAvailable,
+        termPaid: activeTerm?.isPaid || false
       },
-      activeYear: activeYear
-        ? { name: activeYear.name, term: activeYear.term }
+      activeTerm: activeTerm
+        ? { 
+            academicYear: (activeTerm.academicYearId as any)?.name || "N/A",
+            term: activeTerm.termNumber,
+            isPaid: activeTerm.isPaid,
+            isClosed: activeTerm.isClosed
+          }
         : null
     });
   } catch (error: any) {
