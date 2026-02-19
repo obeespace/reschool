@@ -127,9 +127,11 @@ function DashboardLayout({ role, children }: SidebarProps) {
     }
   }, [fetchUnreadCount]);
 
-  const handleNavigation = useCallback((path: string) => {
-    router.push(path);
-  }, [router]);
+  useEffect(() => {
+    links.forEach((link) => {
+      router.prefetch(link.path);
+    });
+  }, [links, router]);
 
   return (
     <div className={mergeThemeClasses(
@@ -187,23 +189,22 @@ function DashboardLayout({ role, children }: SidebarProps) {
               const isActive = pathname === link.path;
               return (
                 <li key={link.path}>
-                  <Link href={link.path} prefetch={true}>
-                    <button
-                      onClick={() => handleNavigation(link.path)}
-                      className={mergeThemeClasses(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
-                        isActive
-                          ? "bg-indigo-50 text-indigo-700"
-                          : "text-gray-700 hover:bg-gray-50"
-                      )}
-                      title={sidebarCollapsed ? link.name : undefined}
-                    >
-                      <Icon size={20} className={mergeThemeClasses(
-                        isActive ? 'text-indigo-600' : 'text-gray-500 group-hover:text-gray-700',
-                        'shrink-0'
-                      )} />
-                      {!sidebarCollapsed && <span className="font-medium text-sm">{link.name}</span>}
-                    </button>
+                  <Link
+                    href={link.path}
+                    prefetch={true}
+                    className={mergeThemeClasses(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                      isActive
+                        ? "bg-indigo-50 text-indigo-700"
+                        : "text-gray-700 hover:bg-gray-50"
+                    )}
+                    title={sidebarCollapsed ? link.name : undefined}
+                  >
+                    <Icon size={20} className={mergeThemeClasses(
+                      isActive ? 'text-indigo-600' : 'text-gray-500 group-hover:text-gray-700',
+                      'shrink-0'
+                    )} />
+                    {!sidebarCollapsed && <span className="font-medium text-sm">{link.name}</span>}
                   </Link>
                 </li>
               );

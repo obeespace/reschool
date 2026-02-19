@@ -14,6 +14,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
+    if (!user.schoolId) {
+      return NextResponse.json(
+        { error: "Invalid session. Please log in again." },
+        { status: 403 }
+      );
+    }
+
     const classes = await Class.find({ schoolId: user.schoolId })
       .populate("classTeacherId", "fullName email")
       .populate("subjectIds", "name code")

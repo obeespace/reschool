@@ -6,6 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { Users, GraduationCap, UsersRound, School, Calendar, BookOpen, TrendingUp, Activity } from "lucide-react";
+import { cachedApiGet } from "@/app/utils/clientCache";
 
 // Lazy load non-critical components
 const DashboardLayout = dynamic(() => import("@/app/components/Sidebar"), { ssr: false });
@@ -64,14 +65,15 @@ export default function AdminDashboard() {
   const fetchStats = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/admin/stats", {
+      if (!token) return;
+      const data = await cachedApiGet<{ stats: typeof stats; schoolName: string }>({
+        key: `admin:stats:${token.slice(-12)}`,
+        url: "/api/admin/stats",
         headers: { Authorization: `Bearer ${token}` },
+        ttlMs: 60_000,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data.stats);
-        setSchoolName(data.schoolName);
-      }
+      setStats(data.stats);
+      setSchoolName(data.schoolName);
     } catch (error) {
       console.error("Error fetching stats:", error);
     } finally {
@@ -82,13 +84,14 @@ export default function AdminDashboard() {
   const fetchAnnouncements = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/announcements/list", {
+      if (!token) return;
+      const data = await cachedApiGet<{ announcements: any[] }>({
+        key: `admin:announcements:${token.slice(-12)}`,
+        url: "/api/announcements/list",
         headers: { Authorization: `Bearer ${token}` },
+        ttlMs: 30_000,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setAnnouncements(data.announcements || []);
-      }
+      setAnnouncements(data.announcements || []);
     } catch (error) {
       console.error("Error fetching announcements:", error);
     }
@@ -126,10 +129,6 @@ export default function AdminDashboard() {
       setIsSubmitting(false);
     }
   }, [fetchAnnouncements]);
-
-  const handleNavigation = useCallback((path: string) => {
-    router.push(path);
-  }, [router]);
 
   if (isLoading) {
     return (
@@ -194,7 +193,6 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Link href="/admin/academic-years" prefetch={true}>
               <button
-                onClick={() => handleNavigation("/admin/academic-years")}
                 className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -209,7 +207,6 @@ export default function AdminDashboard() {
 
             <Link href="/admin/subjects" prefetch={true}>
               <button
-                onClick={() => handleNavigation("/admin/subjects")}
                 className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -224,7 +221,6 @@ export default function AdminDashboard() {
 
             <Link href="/admin/classes" prefetch={true}>
               <button
-                onClick={() => handleNavigation("/admin/classes")}
                 className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -239,7 +235,6 @@ export default function AdminDashboard() {
 
             <Link href="/admin/teachers" prefetch={true}>
               <button
-                onClick={() => handleNavigation("/admin/teachers")}
                 className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -254,7 +249,6 @@ export default function AdminDashboard() {
 
             <Link href="/admin/students" prefetch={true}>
               <button
-                onClick={() => handleNavigation("/admin/students")}
                 className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -269,7 +263,6 @@ export default function AdminDashboard() {
 
             <Link href="/admin/reports" prefetch={true}>
               <button
-                onClick={() => handleNavigation("/admin/reports")}
                 className="w-full group p-5 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all text-left bg-linear-to-br from-white to-gray-50 hover:from-indigo-50 hover:to-white"
               >
                 <div className="flex items-center gap-3 mb-3">

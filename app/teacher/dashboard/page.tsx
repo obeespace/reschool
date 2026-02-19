@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Building2, Users, FileText } from "lucide-react";
 import DashboardLayout from "@/app/components/Sidebar";
 import { StatCard, PageHeader, LoadingSpinner } from "@/app/components/UIComponents";
+import { cachedApiGet } from "@/app/utils/clientCache";
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -54,13 +55,14 @@ export default function TeacherDashboard() {
   const fetchAnnouncements = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/announcements/list", {
+      if (!token) return;
+      const data = await cachedApiGet<{ announcements: any[] }>({
+        key: `teacher:announcements:${token.slice(-12)}`,
+        url: "/api/announcements/list",
         headers: { Authorization: `Bearer ${token}` },
+        ttlMs: 30_000,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setAnnouncements(data.announcements || []);
-      }
+      setAnnouncements(data.announcements || []);
     } catch (error) {
       console.error("Error fetching announcements:", error);
     }
@@ -69,16 +71,16 @@ export default function TeacherDashboard() {
   const fetchDashboard = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/teachers/dashboard", {
+      if (!token) return;
+      const data = await cachedApiGet<{ stats: typeof stats; assignments: any; classes: any[] }>({
+        key: `teacher:dashboard:${token.slice(-12)}`,
+        url: "/api/teachers/dashboard",
         headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
+        ttlMs: 60_000,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data.stats);
-        setAssignments(data.assignments);
-        setMyClasses(data.classes || []);
-      }
+      setStats(data.stats);
+      setAssignments(data.assignments);
+      setMyClasses(data.classes || []);
     } catch (error) {
       console.error("Error fetching dashboard:", error);
       toast.error("Failed to load dashboard data");

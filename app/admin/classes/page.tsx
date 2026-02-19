@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, DataTable, Modal, Button, Select } from "@/app/components/UIComponents";
+import { cachedApiGet, invalidateCache } from "@/app/utils/clientCache";
 
 interface Class {
   _id: string;
@@ -37,20 +38,41 @@ export default function ClassesPage() {
     }
 
     fetchClasses();
-  }, []);
+  }, [router]);
 
-  const fetchClasses = async () => {
+  const fetchClasses = async (forceRefresh = false) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/classes/list", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (!token) {
+        toast.error("Session expired. Please log in again.");
+        router.push("/login");
+        return;
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        setClasses(data.classes);
-      } else {
-        toast.error("Failed to load classes");
+      const cacheKey = `admin:classes:${token.slice(-12)}`;
+
+      try {
+        const data = await cachedApiGet<{ classes: Class[] }>({
+          key: cacheKey,
+          url: "/api/classes/list",
+          headers: { Authorization: `Bearer ${token}` },
+          ttlMs: 60_000,
+          forceRefresh,
+        });
+        setClasses(data.classes || []);
+      } catch (err: any) {
+        const status = err?.status;
+        const message = err?.data?.error;
+
+        if (status === 401 || status === 403) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          toast.error(message || "Session expired. Please log in again.");
+          router.push("/login");
+          return;
+        }
+
+        toast.error(message || "Failed to load classes");
       }
     } catch (error) {
       console.error("Failed to fetch classes:", error);
@@ -85,7 +107,11 @@ export default function ClassesPage() {
         toast.success(`Class ${data.className} created successfully!`);
         setShowModal(false);
         setFormData({ level: "", arm: "" });
-        fetchClasses();
+        const token = localStorage.getItem("token");
+        if (token) {
+          invalidateCache(`admin:classes:${token.slice(-12)}`);
+        }
+        fetchClasses(true);
       } else {
         toast.error(data.error || "Failed to create class");
       }

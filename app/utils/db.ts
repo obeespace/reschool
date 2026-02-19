@@ -17,21 +17,24 @@ export default async function connectDB() {
 
   if (!cached.promise) {
     const connectOptions = {
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 4000,
+      connectTimeoutMS: 4000,
       family: 4
     } as const;
 
+    const primaryUri = MONGODB_DIRECT_URI || MONGODB_URI;
+    const fallbackUri = primaryUri === MONGODB_URI ? MONGODB_DIRECT_URI : MONGODB_URI;
+
     cached.promise = mongoose
-      .connect(MONGODB_URI, connectOptions)
+      .connect(primaryUri, connectOptions)
       .then((mongoose) => mongoose)
       .catch(async (error) => {
-        const isSrv = MONGODB_URI?.startsWith("mongodb+srv://");
+        const isSrv = primaryUri?.startsWith("mongodb+srv://");
         const isSrvTimeout = error?.code === "ETIMEOUT" && error?.syscall === "querySrv";
 
-        if (isSrv && MONGODB_DIRECT_URI) {
+        if (fallbackUri) {
           try {
-            return await mongoose.connect(MONGODB_DIRECT_URI, connectOptions);
+            return await mongoose.connect(fallbackUri, connectOptions);
           } catch {
             // fall through to throw original error
           }

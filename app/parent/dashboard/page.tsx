@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Users, Calendar, FileText } from "lucide-react";
 import DashboardLayout from "@/app/components/Sidebar";
 import { StatCard, PageHeader, LoadingSpinner } from "@/app/components/UIComponents";
+import { cachedApiGet } from "@/app/utils/clientCache";
 
 export default function ParentDashboard() {
   const router = useRouter();
@@ -45,16 +46,15 @@ export default function ParentDashboard() {
   const fetchDashboard = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/parents/dashboard", {
+      if (!token) return;
+      const data = await cachedApiGet<{ wards: any[]; stats: typeof stats }>({
+        key: `parent:dashboard:${token.slice(-12)}`,
+        url: "/api/parents/dashboard",
         headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
+        ttlMs: 60_000,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setWards(data.wards || []);
-        setStats(data.stats);
-      }
+      setWards(data.wards || []);
+      setStats(data.stats);
     } catch (error) {
       console.error("Error fetching parent dashboard:", error);
     } finally {
@@ -65,13 +65,14 @@ export default function ParentDashboard() {
   const fetchAnnouncements = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/announcements/list", {
+      if (!token) return;
+      const data = await cachedApiGet<{ announcements: any[] }>({
+        key: `parent:announcements:${token.slice(-12)}`,
+        url: "/api/announcements/list",
         headers: { Authorization: `Bearer ${token}` },
+        ttlMs: 30_000,
       });
-      if (response.ok) {
-        const data = await response.json();
-        setAnnouncements(data.announcements || []);
-      }
+      setAnnouncements(data.announcements || []);
     } catch (error) {
       console.error("Error fetching announcements:", error);
     }
