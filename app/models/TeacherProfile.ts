@@ -15,12 +15,18 @@ const TeacherProfileSchema = new Schema<ITeacherProfile>(
     schoolId: { type: Schema.Types.ObjectId, ref: "School", required: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
     classTeacherOf: { type: Schema.Types.ObjectId, ref: "Class", default: null },
-    subjectsAndClasses: [
-      {
-        subjectId: { type: Schema.Types.ObjectId, ref: "Subject", required: true },
-        classIds: [{ type: Schema.Types.ObjectId, ref: "Class" }]
-      }
-    ]
+    subjectsAndClasses: {
+      type: [
+        {
+          subjectId: { type: Schema.Types.ObjectId, ref: "Subject", required: true },
+          classIds: {
+            type: [{ type: Schema.Types.ObjectId, ref: "Class" }],
+            default: []
+          }
+        }
+      ],
+      default: []
+    }
   },
   { timestamps: true }
 );

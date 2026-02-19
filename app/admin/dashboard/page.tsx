@@ -6,7 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { Users, GraduationCap, UsersRound, School, Calendar, BookOpen, TrendingUp, Activity } from "lucide-react";
-import { cachedApiGet } from "@/app/utils/clientCache";
+import { ApiRequestError, cachedApiGet } from "@/app/utils/clientCache";
 
 // Lazy load non-critical components
 const DashboardLayout = dynamic(() => import("@/app/components/Sidebar"), { ssr: false });
@@ -75,11 +75,28 @@ export default function AdminDashboard() {
       setStats(data.stats);
       setSchoolName(data.schoolName);
     } catch (error) {
-      console.error("Error fetching stats:", error);
+      if (error instanceof ApiRequestError) {
+        console.error("Error fetching stats:", {
+          status: error.status,
+          message: error.message,
+          data: error.data,
+        });
+
+        if (error.status === 401 || error.status === 403) {
+          localStorage.removeItem("token");
+          router.push("/login");
+          return;
+        }
+
+        toast.error(error.message || "Failed to load dashboard stats");
+      } else {
+        console.error("Error fetching stats:", error);
+        toast.error("Failed to load dashboard stats");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [router]);
 
   const fetchAnnouncements = useCallback(async () => {
     try {

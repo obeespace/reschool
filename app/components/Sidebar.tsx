@@ -35,6 +35,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [recentAnnouncements, setRecentAnnouncements] = useState<any[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
@@ -139,17 +140,20 @@ function DashboardLayout({ role, children }: SidebarProps) {
       "bg-gray-50"
     )}>
       {/* Mobile Overlay Backdrop - Only when expanded */}
-      {!sidebarCollapsed && (
+      {mobileSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
-          onClick={() => setSidebarCollapsed(true)}
+          onClick={() => setMobileSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <div className={mergeThemeClasses(
-        !sidebarCollapsed ? 'fixed lg:relative' : 'relative',
-        sidebarCollapsed ? 'w-20' : 'w-64',
+        'fixed inset-y-0 left-0 w-64 lg:inset-auto',
+        mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+        'lg:translate-x-0',
+        'lg:relative',
+        sidebarCollapsed ? 'lg:w-20' : 'lg:w-64',
         THEME.component.sidebar.backgroundColor,
         THEME.component.sidebar.border,
         'min-h-screen flex flex-col transition-all duration-300',
@@ -162,7 +166,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
           THEME.component.sidebar.borderBottom,
           'flex items-center justify-between'
         )}>
-          {!sidebarCollapsed && (
+          {(!sidebarCollapsed || mobileSidebarOpen) && (
             <div>
               <h1 className={mergeThemeClasses(
                 THEME.typography.h2,
@@ -172,12 +176,18 @@ function DashboardLayout({ role, children }: SidebarProps) {
             </div>
           )}
           <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            onClick={() => {
+              if (window.innerWidth < 1024) {
+                setMobileSidebarOpen(false);
+                return;
+              }
+              setSidebarCollapsed(!sidebarCollapsed);
+            }}
             className={mergeThemeClasses(
               "relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
             )}
           >
-            {sidebarCollapsed ? <Menu size={20} className="text-gray-600" /> : <ChevronLeft size={20} className="text-gray-600" />}
+            {mobileSidebarOpen ? <ChevronLeft size={20} className="text-gray-600" /> : sidebarCollapsed ? <Menu size={20} className="text-gray-600" /> : <ChevronLeft size={20} className="text-gray-600" />}
           </button>
         </div>
 
@@ -192,6 +202,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
                   <Link
                     href={link.path}
                     prefetch={true}
+                    onClick={() => setMobileSidebarOpen(false)}
                     className={mergeThemeClasses(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
                       isActive
@@ -240,6 +251,13 @@ function DashboardLayout({ role, children }: SidebarProps) {
           THEME.component.card.shadow
         )}>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu size={20} className="text-gray-600" />
+            </button>
             <h2 className="text-sm text-gray-600">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </h2>

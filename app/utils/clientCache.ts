@@ -3,6 +3,18 @@ type CacheEntry<T> = {
   data: T;
 };
 
+export class ApiRequestError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 const memoryCache = new Map<string, CacheEntry<unknown>>();
 const inflight = new Map<string, Promise<unknown>>();
 
@@ -77,12 +89,17 @@ export async function cachedApiGet<T>(params: {
     headers,
   })
     .then(async (response) => {
-      const payload = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const isJson = contentType.includes("application/json");
+      const payload = isJson ? await response.json() : await response.text();
+
       if (!response.ok) {
-        throw {
-          status: response.status,
-          data: payload,
-        };
+        const message =
+          (payload && typeof payload === "object" && "error" in payload && typeof (payload as { error?: unknown }).error === "string"
+            ? (payload as { error: string }).error
+            : `Request failed with status ${response.status}`);
+
+        throw new ApiRequestError(message, response.status, payload);
       }
 
       const entry: CacheEntry<T> = {

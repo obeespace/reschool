@@ -2,6 +2,7 @@ import connectDB from "@/app/utils/db";
 import TeacherProfile from "@/app/models/TeacherProfile";
 import Subject from "@/app/models/Subject";
 import Class from "@/app/models/Class";
+import User from "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
@@ -20,8 +21,12 @@ export async function POST(
 
     const { id: teacherId } = await params;
     const { subjectId, classIds } = await req.json();
+    const normalizedSubjectId = typeof subjectId === "string" ? subjectId.trim() : "";
+    const normalizedClassIds = Array.isArray(classIds)
+      ? [...new Set(classIds.filter((classId: any) => typeof classId === "string" && classId.trim()))]
+      : [];
 
-    if (!subjectId || !classIds || classIds.length === 0) {
+    if (!normalizedSubjectId || normalizedClassIds.length === 0) {
       return NextResponse.json({ 
         error: "Subject and classes are required" 
       }, { status: 400 });
@@ -29,7 +34,7 @@ export async function POST(
 
     // Verify subject exists
     const subject = await Subject.findOne({ 
-      _id: subjectId, 
+      _id: normalizedSubjectId, 
       schoolId: admin.schoolId 
     });
 
@@ -37,13 +42,23 @@ export async function POST(
       return NextResponse.json({ error: "Subject not found" }, { status: 404 });
     }
 
+    const teacherExists = await User.findOne({
+      _id: teacherId,
+      schoolId: admin.schoolId,
+      role: "TEACHER"
+    });
+
+    if (!teacherExists) {
+      return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
+    }
+
     // Verify all classes exist
     const classes = await Class.find({
-      _id: { $in: classIds },
+      _id: { $in: normalizedClassIds },
       schoolId: admin.schoolId
     });
 
-    if (classes.length !== classIds.length) {
+    if (classes.length !== normalizedClassIds.length) {
       return NextResponse.json({ error: "Some classes not found" }, { status: 404 });
     }
 
@@ -61,19 +76,23 @@ export async function POST(
       });
     }
 
+    if (!Array.isArray(teacherProfile.subjectsAndClasses)) {
+      teacherProfile.subjectsAndClasses = [];
+    }
+
     // Check if subject already assigned
     const existingIndex = teacherProfile.subjectsAndClasses.findIndex(
-      (item: any) => item.subjectId.toString() === subjectId
+      (item: any) => item?.subjectId?.toString() === normalizedSubjectId
     );
 
     if (existingIndex >= 0) {
       // Update existing assignment
-      teacherProfile.subjectsAndClasses[existingIndex].classIds = classIds;
+      teacherProfile.subjectsAndClasses[existingIndex].classIds = normalizedClassIds;
     } else {
       // Add new assignment
       teacherProfile.subjectsAndClasses.push({
-        subjectId,
-        classIds
+        subjectId: normalizedSubjectId,
+        classIds: normalizedClassIds
       });
     }
 
