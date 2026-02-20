@@ -1,5 +1,8 @@
 import connectDB from "@/app/utils/db";
 import DailyMark from "@/app/models/DailyMark";
+import "@/app/models/Students";
+import "@/app/models/Subject";
+import "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
@@ -16,6 +19,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const studentId = searchParams.get("studentId");
     const academicYearId = searchParams.get("academicYearId");
+    const classId = searchParams.get("classId");
+    const subjectId = searchParams.get("subjectId");
     const type = searchParams.get("type");
 
     // Build query - always filter by school
@@ -28,18 +33,44 @@ export async function GET(req: Request) {
 
     if (studentId) query.studentId = studentId;
     if (academicYearId) query.academicYearId = academicYearId;
-    if (type) query.type = type;
+    if (classId) query.classId = classId;
+    if (subjectId) query.subjectId = subjectId;
+    if (type) {
+      const typeToAssessment: Record<string, string> = {
+        classwork: "CLASSWORK",
+        homework: "HOMEWORK",
+        test: "EVALUATION",
+        extracurricular: "EVALUATION",
+        exam: "EXAM"
+      };
+      query.assessmentType = typeToAssessment[type] || type;
+    }
 
     const dailyMarks = await DailyMark.find(query)
       .populate("studentId", "fullName admissionNumber")
       .populate("subjectId", "name code")
       .populate("teacherId", "fullName")
-      .sort({ date: -1 })
+      .sort({ recordedDate: -1 })
       .lean();
 
+    const normalizedDailyMarks = dailyMarks.map((mark: any) => {
+      const assessmentToType: Record<string, string> = {
+        CLASSWORK: "classwork",
+        HOMEWORK: "homework",
+        EVALUATION: "test",
+        EXAM: "exam"
+      };
+
+      return {
+        ...mark,
+        type: mark.type || assessmentToType[mark.assessmentType] || "classwork",
+        date: mark.date || mark.recordedDate
+      };
+    });
+
     return NextResponse.json({
-      dailyMarks,
-      total: dailyMarks.length
+      dailyMarks: normalizedDailyMarks,
+      total: normalizedDailyMarks.length
     });
 
   } catch (error: any) {

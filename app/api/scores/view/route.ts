@@ -1,5 +1,9 @@
 import connectDB from "@/app/utils/db";
 import Score from "@/app/models/Score";
+import "@/app/models/Students";
+import "@/app/models/Class";
+import "@/app/models/Subject";
+import "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

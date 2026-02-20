@@ -1,5 +1,7 @@
 import connectDB from "@/app/utils/db";
 import Class from "@/app/models/Class";
+import "@/app/models/User";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

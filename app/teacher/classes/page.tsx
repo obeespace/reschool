@@ -35,26 +35,29 @@ export default function TeacherClassesPage() {
   const fetchTeacherClasses = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/teachers/assignments", {
+      const response = await fetch("/api/teachers/create", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
         const data = await response.json();
+        const profile = data.profile;
         
         // Extract classes from subjectsAndClasses
         const classMap = new Map<string, ClassInfo>();
         
-        if (data.subjectsAndClasses) {
-          data.subjectsAndClasses.forEach((assignment: any) => {
+        if (profile?.subjectsAndClasses) {
+          profile.subjectsAndClasses.forEach((assignment: any) => {
             assignment.classIds?.forEach((classInfo: any) => {
               if (classInfo && classInfo._id) {
+                const classId = classInfo._id.toString();
+                const existing = classMap.get(classId);
                 classMap.set(classInfo._id.toString(), {
-                  id: classInfo._id.toString(),
+                  id: classId,
                   level: classInfo.level,
                   arm: classInfo.arm,
                   studentCount: 0, // Will be populated by another API call if needed
-                  subjectCount: 1 // At least one subject
+                  subjectCount: existing ? existing.subjectCount + 1 : 1
                 });
               }
             });
@@ -62,22 +65,29 @@ export default function TeacherClassesPage() {
         }
 
         // Check if class teacher
-        if (data.classTeacherOf) {
+        if (profile?.classTeacherOf) {
           setIsClassTeacher(true);
-          setClassTeacherClass(data.classTeacherOf);
+          setClassTeacherClass(profile.classTeacherOf);
           
-          if (data.classTeacherOf._id) {
-            classMap.set(data.classTeacherOf._id.toString(), {
-              id: data.classTeacherOf._id.toString(),
-              level: data.classTeacherOf.level,
-              arm: data.classTeacherOf.arm,
+          if (profile.classTeacherOf._id) {
+            const classTeacherId = profile.classTeacherOf._id.toString();
+            const existing = classMap.get(classTeacherId);
+            classMap.set(classTeacherId, {
+              id: classTeacherId,
+              level: profile.classTeacherOf.level,
+              arm: profile.classTeacherOf.arm,
               studentCount: 0,
-              subjectCount: 0
+              subjectCount: existing ? existing.subjectCount : 0
             });
           }
+        } else {
+          setIsClassTeacher(false);
+          setClassTeacherClass(null);
         }
 
         setClasses(Array.from(classMap.values()));
+      } else {
+        setClasses([]);
       }
     } catch (error) {
       console.error("Failed to fetch teacher classes:", error);

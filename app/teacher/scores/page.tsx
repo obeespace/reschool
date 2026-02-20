@@ -1,31 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { PageHeader, Button, Modal, Input, Select, LoadingSpinner, DataTable } from "@/app/components/UIComponents";
-import { Plus, Trash2 } from "lucide-react";
+import { PageHeader, Button, Select, LoadingSpinner } from "@/app/components/UIComponents";
+
+interface BulkRow {
+  studentId: string;
+  studentName: string;
+  score: string;
+  notes: string;
+}
 
 export default function TeacherScores() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"daily" | "academic">("daily");
-  const [showDailyModal, setShowDailyModal] = useState(false);
-  const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
+  const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
   const [dailyMarks, setDailyMarks] = useState<any[]>([]);
   const [academicYear, setAcademicYear] = useState<any>(null);
-  const [dailyFormData, setDailyFormData] = useState({
-    studentId: "",
+  const [isSheetLoading, setIsSheetLoading] = useState(false);
+  const [isSavingBulk, setIsSavingBulk] = useState(false);
+
+  const [bulkForm, setBulkForm] = useState({
     classId: "",
     subjectId: "",
     type: "classwork",
-    score: "",
     maxScore: "10",
-    notes: "",
   });
+
+  const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -40,37 +46,32 @@ export default function TeacherScores() {
   const fetchData = async () => {
     try {
       const token = localStorage.getItem("token");
-      
-      // Fetch current academic year
+
       const yearRes = await fetch("/api/academic-years/active", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (yearRes.ok) {
         const data = await yearRes.json();
         setAcademicYear(data.academicYear);
-        
-        // Fetch daily marks
         if (data.academicYear) {
           fetchDailyMarks(data.academicYear._id);
         }
       }
-      
-      // Fetch subjects
-      const subjectsRes = await fetch("/api/subjects", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (subjectsRes.ok) {
-        const data = await subjectsRes.json();
-        setSubjects(data.subjects || []);
-      }
 
-      // Fetch classes
       const classesRes = await fetch("/api/classes/list", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (classesRes.ok) {
         const data = await classesRes.json();
         setClasses(data.classes || []);
+      }
+
+      const profileRes = await fetch("/api/teachers/create", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        setTeacherAssignments(data.profile?.subjectsAndClasses || []);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -96,82 +97,169 @@ export default function TeacherScores() {
     }
   };
 
-  const fetchStudents = async (classId: string) => {
-    if (!classId) return;
-
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`/api/students/by-class?classId=${classId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+  const allowedClassIds = useMemo(() => {
+    const ids = new Set<string>();
+    teacherAssignments.forEach((assignment: any) => {
+      (assignment.classIds || []).forEach((classItem: any) => {
+        if (classItem?._id) ids.add(classItem._id.toString());
       });
+    });
+    return ids;
+  }, [teacherAssignments]);
 
-      if (response.ok) {
-        const data = await response.json();
-        setStudents(data.students || []);
+  const availableClasses = useMemo(
+    () => classes.filter((classItem: any) => allowedClassIds.has(classItem._id?.toString())),
+    [classes, allowedClassIds]
+  );
+
+  const availableSubjects = useMemo(() => {
+    if (!bulkForm.classId) return [];
+    const uniqueSubjects = new Map<string, any>();
+
+    teacherAssignments.forEach((assignment: any) => {
+      const teachesSelectedClass = (assignment.classIds || []).some(
+        (classItem: any) => classItem?._id?.toString() === bulkForm.classId
+      );
+
+      if (teachesSelectedClass && assignment.subjectId?._id) {
+        uniqueSubjects.set(assignment.subjectId._id.toString(), assignment.subjectId);
       }
-    } catch (error) {
-      console.error("Error fetching students:", error);
+    });
+
+    return Array.from(uniqueSubjects.values());
+  }, [bulkForm.classId, teacherAssignments]);
+
+  const fetchStudentsByClass = async (classId: string) => {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`/api/students/by-class?classId=${classId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Failed to load students");
     }
+
+    const data = await response.json();
+    return data.students || [];
   };
 
-  const handleClassChange = (classId: string) => {
-    setDailyFormData({ ...dailyFormData, classId, studentId: "" });
-    fetchStudents(classId);
-  };
-
-  const handleDailyMarkSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!dailyFormData.studentId || !dailyFormData.subjectId || !dailyFormData.score) {
-      toast.error("Please fill all required fields");
+  const loadBulkSheet = async () => {
+    if (!bulkForm.classId || !bulkForm.subjectId) {
+      toast.error("Please select class and subject first");
       return;
     }
 
-    if (!academicYear) {
+    if (!academicYear?._id) {
       toast.error("No active academic year found");
       return;
     }
 
+    setIsSheetLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/scores/daily-marks/create", {
+      const students = await fetchStudentsByClass(bulkForm.classId);
+
+      const marksRes = await fetch(
+        `/api/scores/daily-marks/list?academicYearId=${academicYear._id}&classId=${bulkForm.classId}&subjectId=${bulkForm.subjectId}&type=${bulkForm.type}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      let existingMarks: any[] = [];
+      if (marksRes.ok) {
+        const marksData = await marksRes.json();
+        existingMarks = marksData.dailyMarks || [];
+      }
+
+      const marksByStudent = new Map<string, any>();
+      existingMarks.forEach((mark: any) => {
+        if (mark.studentId?._id) {
+          marksByStudent.set(mark.studentId._id.toString(), mark);
+        }
+      });
+
+      const rows: BulkRow[] = students.map((student: any) => {
+        const existing = marksByStudent.get(student._id.toString());
+        return {
+          studentId: student._id.toString(),
+          studentName: student.fullName,
+          score: existing?.score !== undefined ? String(existing.score) : "",
+          notes: existing?.feedbackNotes || "",
+        };
+      });
+
+      setBulkRows(rows);
+      toast.success("Class sheet loaded");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to load class sheet");
+    } finally {
+      setIsSheetLoading(false);
+    }
+  };
+
+  const updateBulkRow = (index: number, field: "score" | "notes", value: string) => {
+    setBulkRows((prev) =>
+      prev.map((row, rowIndex) =>
+        rowIndex === index
+          ? { ...row, [field]: value }
+          : row
+      )
+    );
+  };
+
+  const handleSaveBulkMarks = async () => {
+    if (!academicYear?._id) {
+      toast.error("No active academic year found");
+      return;
+    }
+
+    const entries = bulkRows
+      .filter((row) => row.score !== "")
+      .map((row) => ({
+        studentId: row.studentId,
+        score: Number(row.score),
+        notes: row.notes,
+      }));
+
+    if (entries.length === 0) {
+      toast.error("Enter at least one score to save");
+      return;
+    }
+
+    setIsSavingBulk(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/scores/daily-marks/bulk-upsert", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          studentId: dailyFormData.studentId,
-          subjectId: dailyFormData.subjectId,
-          classId: dailyFormData.classId,
-          type: dailyFormData.type,
-          score: parseFloat(dailyFormData.score),
-          maxScore: parseFloat(dailyFormData.maxScore) || 10,
-          notes: dailyFormData.notes,
+          classId: bulkForm.classId,
+          subjectId: bulkForm.subjectId,
+          type: bulkForm.type,
+          maxScore: Number(bulkForm.maxScore) || 10,
           academicYearId: academicYear._id,
+          entries,
         }),
       });
 
-      if (response.ok) {
-        toast.success("Daily mark recorded successfully!");
-        setShowDailyModal(false);
-        setDailyFormData({
-          studentId: "",
-          classId: "",
-          subjectId: "",
-          type: "classwork",
-          score: "",
-          maxScore: "10",
-          notes: "",
-        });
-        fetchDailyMarks(academicYear._id);
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to record daily mark");
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to save marks");
+        return;
       }
+
+      toast.success(`Saved ${data.summary?.totalProcessed || entries.length} marks`);
+      fetchDailyMarks(academicYear._id);
+      loadBulkSheet();
     } catch (error) {
-      console.error("Error:", error);
-      toast.error("An error occurred");
+      console.error("Error saving bulk marks:", error);
+      toast.error("Failed to save marks");
+    } finally {
+      setIsSavingBulk(false);
     }
   };
 
@@ -187,17 +275,9 @@ export default function TeacherScores() {
     <DashboardLayout role="TEACHER">
       <PageHeader
         title="Upload Scores"
-        description="Manage daily marks and academic records"
-        action={
-          activeTab === "daily" ? (
-            <Button onClick={() => setShowDailyModal(true)} className="flex items-center gap-2">
-              <Plus size={18} /> Record Daily Mark
-            </Button>
-          ) : null
-        }
+        description="Enter and edit class scores in bulk"
       />
 
-      {/* Tabs */}
       <div className="mb-6 border-b border-gray-200">
         <div className="flex gap-8">
           <button
@@ -223,23 +303,146 @@ export default function TeacherScores() {
         </div>
       </div>
 
-      {/* Daily Marks Tab */}
       {activeTab === "daily" && (
         <div className="space-y-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-sm text-blue-800">
-              <strong>Daily Marks Info:</strong> These marks track daily performance (classwork, homework, tests, extracurricular). 
-              Parents can view real-time updates. These will be cleared at the end of the academic year.
+              <strong>Bulk Entry:</strong> Select a class and subject, load the class sheet, fill scores/notes for all students, and save once. Existing records are prefilled for editing.
             </p>
           </div>
 
-          {dailyMarks.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-8 text-center">
-              <p className="text-gray-600 mb-4">No daily marks recorded yet</p>
-              <Button onClick={() => setShowDailyModal(true)}>Record Your First Daily Mark</Button>
+          <div className="bg-white rounded-lg shadow p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Select
+                label="Class"
+                value={bulkForm.classId}
+                onChange={(e) => {
+                  setBulkForm((prev) => ({ ...prev, classId: e.target.value, subjectId: "" }));
+                  setBulkRows([]);
+                }}
+                options={[
+                  { value: "", label: "Select Class" },
+                  ...availableClasses.map((classItem: any) => ({
+                    value: classItem._id,
+                    label: `${classItem.level} ${classItem.arm}`,
+                  })),
+                ]}
+                required
+              />
+
+              <Select
+                label="Subject"
+                value={bulkForm.subjectId}
+                onChange={(e) => {
+                  setBulkForm((prev) => ({ ...prev, subjectId: e.target.value }));
+                  setBulkRows([]);
+                }}
+                options={[
+                  { value: "", label: "Select Subject" },
+                  ...availableSubjects.map((subject: any) => ({
+                    value: subject._id,
+                    label: subject.name,
+                  })),
+                ]}
+                required
+              />
+
+              <Select
+                label="Mark Type"
+                value={bulkForm.type}
+                onChange={(e) => {
+                  setBulkForm((prev) => ({ ...prev, type: e.target.value }));
+                  setBulkRows([]);
+                }}
+                options={[
+                  { value: "classwork", label: "Classwork" },
+                  { value: "homework", label: "Homework" },
+                  { value: "test", label: "Test" },
+                  { value: "exam", label: "Exam" },
+                  { value: "extracurricular", label: "Extracurricular" },
+                ]}
+                required
+              />
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Max Score</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={bulkForm.maxScore}
+                  onChange={(e) => setBulkForm((prev) => ({ ...prev, maxScore: e.target.value }))}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-sm"
+                />
+              </div>
             </div>
-          ) : (
+
+            <div className="flex gap-3">
+              <Button onClick={loadBulkSheet} disabled={isSheetLoading}>
+                {isSheetLoading ? "Loading Sheet..." : "Load Class Sheet"}
+              </Button>
+              <Button variant="secondary" onClick={() => setBulkRows([])}>
+                Clear Sheet
+              </Button>
+            </div>
+          </div>
+
+          {bulkRows.length > 0 && (
             <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b flex justify-between items-center">
+                <h3 className="font-semibold text-gray-900">Student Score Sheet</h3>
+                <Button onClick={handleSaveBulkMarks} disabled={isSavingBulk}>
+                  {isSavingBulk ? "Saving..." : "Save All Marks"}
+                </Button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-180">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Notes / Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {bulkRows.map((row, index) => (
+                      <tr key={row.studentId} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.studentName}</td>
+                        <td className="px-6 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={row.score}
+                            onChange={(e) => updateBulkRow(index, "score", e.target.value)}
+                            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            placeholder="0-100"
+                          />
+                        </td>
+                        <td className="px-6 py-3">
+                          <input
+                            type="text"
+                            value={row.notes}
+                            onChange={(e) => updateBulkRow(index, "notes", e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                            placeholder="Optional comment"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="px-6 py-4 border-b">
+              <h3 className="font-semibold text-gray-900">Recent Daily Marks</h3>
+            </div>
+            {dailyMarks.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">No daily marks recorded yet</div>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b">
@@ -270,17 +473,16 @@ export default function TeacherScores() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
-      {/* Academic Records Tab */}
       {activeTab === "academic" && (
         <div className="space-y-6">
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <p className="text-sm text-green-800">
-              <strong>Academic Records:</strong> These are permanent records of tests and exams. 
+              <strong>Academic Records:</strong> These are permanent records of tests and exams.
               Used for official transcripts and academic history.
             </p>
           </div>
@@ -289,99 +491,6 @@ export default function TeacherScores() {
           </div>
         </div>
       )}
-
-      {/* Daily Mark Modal */}
-      <Modal
-        isOpen={showDailyModal}
-        onClose={() => setShowDailyModal(false)}
-        title="Record Daily Mark"
-      >
-        <form onSubmit={handleDailyMarkSubmit} className="space-y-4">
-          <Select
-            label="Class"
-            value={dailyFormData.classId}
-            onChange={(e) => handleClassChange(e.target.value)}
-            options={[
-              { value: "", label: "Select Class" },
-              ...classes.map(c => ({ value: c._id, label: `${c.level} ${c.arm}` }))
-            ]}
-            required
-          />
-
-          <Select
-            label="Student"
-            value={dailyFormData.studentId}
-            onChange={(e) => setDailyFormData({ ...dailyFormData, studentId: e.target.value })}
-            options={[
-              { value: "", label: "Select Student" },
-              ...students.map(s => ({ value: s._id, label: s.fullName }))
-            ]}
-            required
-          />
-
-          <Select
-            label="Subject"
-            value={dailyFormData.subjectId}
-            onChange={(e) => setDailyFormData({ ...dailyFormData, subjectId: e.target.value })}
-            options={[
-              { value: "", label: "Select Subject" },
-              ...subjects.map(s => ({ value: s._id, label: s.name }))
-            ]}
-            required
-          />
-
-          <Select
-            label="Mark Type"
-            value={dailyFormData.type}
-            onChange={(e) => setDailyFormData({ ...dailyFormData, type: e.target.value })}
-            options={[
-              { value: "classwork", label: "Classwork" },
-              { value: "homework", label: "Homework" },
-              { value: "test", label: "Test" },
-              { value: "extracurricular", label: "Extracurricular" },
-            ]}
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Score (0-100)"
-              type="number"
-              value={dailyFormData.score}
-              onChange={(e) => setDailyFormData({ ...dailyFormData, score: e.target.value })}
-              placeholder="e.g., 85"
-              required
-            />
-            <Input
-              label="Max Score"
-              type="number"
-              value={dailyFormData.maxScore}
-              onChange={(e) => setDailyFormData({ ...dailyFormData, maxScore: e.target.value })}
-              placeholder="e.g., 10"
-            />
-          </div>
-
-          <Input
-            label="Notes (Optional)"
-            type="text"
-            value={dailyFormData.notes}
-            onChange={(e) => setDailyFormData({ ...dailyFormData, notes: e.target.value })}
-            placeholder="Add any comments..."
-          />
-
-          <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1">Record Mark</Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowDailyModal(false)}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </Modal>
     </DashboardLayout>
   );
 }

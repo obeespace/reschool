@@ -2,7 +2,7 @@ import connectDB from "@/app/utils/db";
 import Score from "@/app/models/Score";
 import AIGuidance from "@/app/models/AIGuidance";
 import Student from "@/app/models/Students";
-import Subject from "@/app/models/Subject";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

@@ -2,7 +2,8 @@ import connectDB from "@/app/utils/db";
 import Announcement from "@/app/models/Announcements";
 import AnnouncementRead from "@/app/models/AnnouncementRead";
 import Student from "@/app/models/Students";
-import Class from "@/app/models/Class";
+import "@/app/models/Class";
+import "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
@@ -94,7 +95,7 @@ export async function GET(req: Request) {
         message: a.message,
         isNew,
         postedBy: {
-          name: `${a.postedBy.firstName} ${a.postedBy.lastName}`
+          name: a.postedBy?.fullName || [a.postedBy?.firstName, a.postedBy?.lastName].filter(Boolean).join(" ") || "System"
         },
         timeAgo,
         className: a.classId?.name || null

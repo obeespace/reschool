@@ -8,6 +8,7 @@ import Student from "@/app/models/Students";
 import Class from "@/app/models/Class";
 import Subject from "@/app/models/Subject";
 import Term from "@/app/models/Term";
+import "@/app/models/AcademicYear";
 
 export async function GET(req: Request) {
   try {

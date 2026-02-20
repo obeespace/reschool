@@ -1,6 +1,9 @@
 import connectDB from "@/app/utils/db";
 import Student from "@/app/models/Students";
 import Class from "@/app/models/Class";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import "@/app/models/Subject";
+import "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
@@ -23,6 +26,25 @@ export async function GET(req: Request) {
         { error: "Class ID is required" },
         { status: 400 }
       );
+    }
+
+    if (user.role === "TEACHER") {
+      const teacherProfile = await TeacherProfile.findOne({
+        schoolId: user.schoolId,
+        userId: user.userId
+      }).select("subjectsAndClasses");
+
+      const canAccessClass = (teacherProfile?.subjectsAndClasses || []).some(
+        (assignment: any) =>
+          (assignment?.classIds || []).some((classObjectId: any) => classObjectId?.toString() === classId)
+      );
+
+      if (!canAccessClass) {
+        return NextResponse.json(
+          { error: "You can only access students in classes assigned to you" },
+          { status: 403 }
+        );
+      }
     }
 
     // Verify class exists and belongs to the school

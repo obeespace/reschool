@@ -2,6 +2,9 @@ import connectDB from "@/app/utils/db";
 import DailyMark from "@/app/models/DailyMark";
 import Score from "@/app/models/Score";
 import User from "@/app/models/User";
+import "@/app/models/Students";
+import "@/app/models/Term";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

@@ -1,6 +1,7 @@
 import connectDB from "@/app/utils/db";
 import TeacherProfile from "@/app/models/TeacherProfile";
 import Class from "@/app/models/Class";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { allowRoles } from "@/app/utils/permissions";
 import { NextResponse } from "next/server";

@@ -2,6 +2,8 @@ import connectDB from "@/app/utils/db";
 import Student from "@/app/models/Students";
 import Term from "@/app/models/Term";
 import Score from "@/app/models/Score";
+import "@/app/models/Class";
+import "@/app/models/AcademicYear";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

@@ -2,6 +2,8 @@ import connectDB from "@/app/utils/db";
 import ReportCard from "@/app/models/ReportCard";
 import Students from "@/app/models/Students";
 import Certificate from "@/app/models/Certificate";
+import "@/app/models/Term";
+import "@/app/models/AcademicYear";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

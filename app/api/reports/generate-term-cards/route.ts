@@ -7,6 +7,7 @@ import TeacherRemark from "@/app/models/TeacherRemark";
 import Students from "@/app/models/Students";
 import Term from "@/app/models/Term";
 import Class from "@/app/models/Class";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { notifyReportReady } from "@/app/api/notifications/send/route";

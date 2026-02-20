@@ -3,6 +3,7 @@ import Class from "@/app/models/Class";
 import Student from "@/app/models/Students";
 import TeacherProfile from "@/app/models/TeacherProfile";
 import User from "@/app/models/User";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

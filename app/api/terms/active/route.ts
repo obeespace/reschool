@@ -1,5 +1,6 @@
 import connectDB from "@/app/utils/db";
 import Term from "@/app/models/Term";
+import "@/app/models/AcademicYear";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 

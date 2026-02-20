@@ -1,6 +1,7 @@
 import connectDB from "@/app/utils/db";
 import Score from "@/app/models/Score";
 import AIGuidance from "@/app/models/AIGuidance";
+import "@/app/models/Subject";
 import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
