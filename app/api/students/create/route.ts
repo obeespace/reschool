@@ -1,6 +1,5 @@
 import connectDB from "@/app/utils/db";
 import Student from "@/app/models/Students";
-import TeacherProfile from "@/app/models/TeacherProfile";
 import Class from "@/app/models/Class";
 import User from "@/app/models/User";
 import { verifyToken } from "@/app/utils/auth";
@@ -13,8 +12,8 @@ export async function POST(req: Request) {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: any = verifyToken(token || "");
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (!user || user.role !== "ADMIN") {
+      return NextResponse.json({ error: "Only admins can create students" }, { status: 403 });
     }
 
     const {
@@ -22,11 +21,12 @@ export async function POST(req: Request) {
       admissionNumber,
       dateOfBirth,
       gender,
+      classId,
       parentId,
       parentFullName,
       parentEmail,
-      parentPassword,
-      classId
+      parentPhone,
+      parentPassword
     } = await req.json();
 
     if (!fullName || !classId || !admissionNumber) {
@@ -36,89 +36,103 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check permissions
-    if (user.role === "ADMIN") {
-      // Admin can create students for any class
-    } else if (user.role === "TEACHER") {
-      // Only class teachers can create students for their assigned class
-      const teacherProfile = await TeacherProfile.findOne({ userId: user.userId });
-      
-      if (!teacherProfile) {
-        return NextResponse.json(
-          { error: "Teacher profile not found" },
-          { status: 404 }
-        );
-      }
-
-      // Check if teacher is the class teacher of this class
-      if (!teacherProfile.classTeacherOf || 
-          teacherProfile.classTeacherOf.toString() !== classId) {
-        return NextResponse.json(
-          { error: "Only class teachers can create students for their assigned class" },
-          { status: 403 }
-        );
-      }
-    } else {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    // Verify class exists and belongs to the school
-    const classDoc = await Class.findOne({ 
-      _id: classId, 
-      schoolId: user.schoolId 
-    });
+    const classDoc = await Class.findOne({
+      _id: classId,
+      schoolId: user.schoolId
+    }).select("_id");
 
     if (!classDoc) {
-      return NextResponse.json(
-        { error: "Class not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Class not found" }, { status: 404 });
     }
 
     const existingStudent = await Student.findOne({
       schoolId: user.schoolId,
       admissionNumber
-    });
+    }).select("_id");
 
     if (existingStudent) {
-      return NextResponse.json(
-        { error: "Admission number already exists" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Admission number already exists" }, { status: 400 });
     }
+
+    const normalizedEmail = typeof parentEmail === "string" ? parentEmail.trim().toLowerCase() : "";
+    const normalizedPhone = typeof parentPhone === "string" ? parentPhone.trim() : "";
 
     let linkedParentId = parentId || null;
     let temporaryParentPassword: string | null = null;
 
-    if (!linkedParentId && parentEmail && parentFullName) {
-      const existingParent = await User.findOne({ email: parentEmail });
+    if (linkedParentId) {
+      const existingParentById = await User.findOne({
+        _id: linkedParentId,
+        schoolId: user.schoolId,
+        role: "PARENT"
+      }).select("_id");
 
-      if (existingParent) {
-        if (existingParent.role !== "PARENT") {
-          return NextResponse.json(
-            { error: "Email already belongs to a non-parent account" },
-            { status: 400 }
-          );
+      if (!existingParentById) {
+        return NextResponse.json({ error: "Selected guardian account not found" }, { status: 404 });
+      }
+    } else if (normalizedEmail || normalizedPhone) {
+      let parentByEmail: any = null;
+      let parentByPhone: any = null;
+
+      if (normalizedEmail) {
+        const userWithEmail = await User.findOne({ email: normalizedEmail });
+        if (userWithEmail) {
+          if (userWithEmail.role !== "PARENT") {
+            return NextResponse.json(
+              { error: "Email already belongs to a non-guardian account" },
+              { status: 400 }
+            );
+          }
+
+          if (userWithEmail.schoolId?.toString() !== user.schoolId) {
+            return NextResponse.json(
+              { error: "Guardian email belongs to a different school" },
+              { status: 400 }
+            );
+          }
+
+          parentByEmail = userWithEmail;
         }
+      }
 
-        if (existingParent.schoolId?.toString() !== user.schoolId) {
-          return NextResponse.json(
-            { error: "Parent account belongs to a different school" },
-            { status: 400 }
-          );
-        }
+      if (normalizedPhone) {
+        parentByPhone = await User.findOne({
+          schoolId: user.schoolId,
+          role: "PARENT",
+          phoneNumber: normalizedPhone
+        });
+      }
 
-        linkedParentId = existingParent._id;
+      if (parentByEmail && parentByPhone && parentByEmail._id.toString() !== parentByPhone._id.toString()) {
+        return NextResponse.json(
+          { error: "Guardian email and phone match different accounts. Please select guardian manually." },
+          { status: 400 }
+        );
+      }
+
+      const matchedParent = parentByEmail || parentByPhone;
+
+      if (matchedParent) {
+        linkedParentId = matchedParent._id;
       } else {
+        if (!parentFullName || !normalizedEmail) {
+          return NextResponse.json(
+            { error: "For new guardian account, guardian full name and email are required" },
+            { status: 400 }
+          );
+        }
+
         const rawPassword = parentPassword || Math.random().toString(36).slice(2, 10);
         const passwordHash = await bcrypt.hash(rawPassword, 10);
 
         const newParent = await User.create({
           fullName: parentFullName,
-          email: parentEmail,
+          email: normalizedEmail,
+          phoneNumber: normalizedPhone || null,
           passwordHash,
           role: "PARENT",
-          schoolId: user.schoolId
+          schoolId: user.schoolId,
+          isActive: true
         });
 
         linkedParentId = newParent._id;
@@ -136,12 +150,11 @@ export async function POST(req: Request) {
       currentClassId: classId
     });
 
-    // Add student to class
     await Class.findByIdAndUpdate(classId, {
-      $push: { studentIds: student._id }
+      $addToSet: { studentIds: student._id }
     });
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       studentId: student._id.toString(),
       parentId: linkedParentId,
       temporaryParentPassword,

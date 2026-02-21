@@ -20,7 +20,6 @@ interface Student {
 export default function TeacherStudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
-  const [showModal, setShowModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -171,47 +170,6 @@ export default function TeacherStudentsPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.fullName || !formData.admissionNumber) {
-      toast.error("Please fill all required fields");
-      return;
-    }
-
-    if (!isClassTeacher || !classInfo) {
-      toast.error("You must be a class teacher to add students");
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/students/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...formData,
-          classId: classInfo._id,
-        }),
-      });
-
-      if (response.ok) {
-        toast.success("Student added successfully!");
-        setShowModal(false);
-        setFormData({ fullName: "", admissionNumber: "", dateOfBirth: "", gender: "" });
-        loadTeacherStudents();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to add student");
-      }
-    } catch (error) {
-      toast.error("Failed to add student");
-    }
-  };
-
   const columns = [
     { header: "Admission Number", accessor: "admissionNumber" as keyof Student },
     { header: "Full Name", accessor: "fullName" as keyof Student },
@@ -304,12 +262,7 @@ export default function TeacherStudentsPage() {
     <DashboardLayout role="TEACHER">
       <PageHeader
         title="Students"
-        description={`Manage students in ${classInfo?.level} ${classInfo?.arm}`}
-        action={
-          <Button onClick={() => setShowModal(true)}>
-            + Add Student
-          </Button>
-        }
+        description={`View students in ${classInfo?.level} ${classInfo?.arm}`}
       />
 
       <div className="mb-6 bg-linear-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
@@ -324,72 +277,12 @@ export default function TeacherStudentsPage() {
         {students.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <p className="mb-2">No students enrolled yet</p>
-            <p className="text-sm">Click "+ Add Student" to add your first student</p>
+            <p className="text-sm">Contact your administrator to add students</p>
           </div>
         ) : (
           <DataTable data={students} columns={columns} />
         )}
       </div>
-
-      <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add Student"
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Full Name"
-            type="text"
-            value={formData.fullName}
-            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-            placeholder="e.g., Chukwuemeka Obi"
-            required
-          />
-          
-          <Input
-            label="Admission Number"
-            type="text"
-            value={formData.admissionNumber}
-            onChange={(e) => setFormData({ ...formData, admissionNumber: e.target.value })}
-            placeholder="e.g., 2024/JSS1/001"
-            required
-          />
-          
-          <Input
-            label="Date of Birth"
-            type="date"
-            value={formData.dateOfBirth}
-            onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-          />
-
-          <Select
-            label="Gender"
-            value={formData.gender}
-            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-            options={[
-              { value: "", label: "Select Gender" },
-              { value: "Male", label: "Male" },
-              { value: "Female", label: "Female" }
-            ]}
-          />
-
-          <div className="bg-blue-50 p-3 rounded text-sm text-blue-800">
-            <p><strong>Note:</strong> Student will be added to {classInfo?.level} {classInfo?.arm}</p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button type="submit" className="flex-1">Add Student</Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowModal(false)}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </Modal>
 
       {/* View Details Modal */}
       <Modal
