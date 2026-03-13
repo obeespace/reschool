@@ -1,123 +1,46 @@
-import connectDB from "@/app/utils/db";
-import TeacherProfile from "@/app/models/TeacherProfile";
-import Class from "@/app/models/Class";
-import "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
-import { allowRoles } from "@/app/utils/permissions";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { users } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
-// Update teacher assignments (class teacher role and subjects/classes)
-export async function PATCH(req: Request) {
-  try {
-    await connectDB();
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
-    
-    if (!allowRoles(user, ["ADMIN"])) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const { 
-      teacherUserId,
-      classTeacherOf, // Optional: classId they are class teacher of
-      subjectsAndClasses // Array of { subjectId, classIds: [] }
-    } = await req.json();
-
-    if (!teacherUserId) {
-      return NextResponse.json(
-        { error: "Teacher user ID is required" },
-        { status: 400 }
-      );
-    }
-
-    // Find existing teacher profile
-    const profile = await TeacherProfile.findOne({ userId: teacherUserId });
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "Teacher profile not found" },
-        { status: 404 }
-      );
-    }
-
-    // If classTeacherOf changed, update the class records
-    if (classTeacherOf !== undefined) {
-      // Remove from old class if any
-      if (profile.classTeacherOf) {
-        await Class.findByIdAndUpdate(profile.classTeacherOf, {
-          $set: { classTeacherId: null }
-        });
-      }
-
-      // Assign to new class if provided
-      if (classTeacherOf) {
-        await Class.findOneAndUpdate(
-          { _id: classTeacherOf, schoolId: user!.schoolId },
-          { $set: { classTeacherId: teacherUserId } }
-        );
-      }
-
-      profile.classTeacherOf = classTeacherOf || null;
-    }
-
-    // Update subjects and classes
-    if (subjectsAndClasses !== undefined) {
-      profile.subjectsAndClasses = subjectsAndClasses;
-    }
-
-    await profile.save();
-
-    return NextResponse.json({
-      message: "Teacher assignments updated successfully",
-      profile
-    });
-  } catch (error: any) {
-    console.error("Update teacher assignments error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to update teacher assignments" },
-      { status: 500 }
-    );
-  }
-}
-
-// Get specific teacher profile (for admin)
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
+    const teacher: ITokenPayload | null = verifyToken(token || "");
 
-    if (!allowRoles(user, ["ADMIN"])) {
+    if (!teacher || teacher.role !== "TEACHER") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const teacherUserId = searchParams.get("teacherUserId");
-
-    if (!teacherUserId) {
-      return NextResponse.json(
-        { error: "Teacher user ID is required" },
-        { status: 400 }
-      );
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    const profile = await TeacherProfile.findOne({ userId: teacherUserId })
-      .populate("classTeacherOf", "level arm")
-      .populate("subjectsAndClasses.subjectId", "name code")
-      .populate("subjectsAndClasses.classIds", "level arm");
+    const teacherRow = await d1
+      .select({ id: users.id, fullName: users.name, email: users.email })
+      .from(users)
+      .where(and(eq(users.id, teacher.userId), eq(users.schoolId, teacher.schoolId)))
+      .limit(1);
 
-    if (!profile) {
-      return NextResponse.json(
-        { error: "Teacher profile not found" },
-        { status: 404 }
-      );
+    if (!teacherRow[0]) {
+      return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ profile });
-  } catch (error: any) {
-    console.error("Fetch teacher profile error:", error);
+    return NextResponse.json({
+      id: teacherRow[0].id,
+      fullName: teacherRow[0].fullName,
+      email: teacherRow[0].email,
+      classTeacherOf: null,
+      subjectsAndClasses: [],
+      isActive: true,
+      warning: "Teacher assignment mapping is pending D1 migration.",
+    });
+  } catch (error: unknown) {
+    console.error("Fetch teacher assignments error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch teacher profile" },
+      { error: error instanceof Error ? error.message : "Failed to fetch teacher assignments" },
       { status: 500 }
     );
   }

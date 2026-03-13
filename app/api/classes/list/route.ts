@@ -1,38 +1,61 @@
-import connectDB from "@/app/utils/db";
-import Class from "@/app/models/Class";
-import "@/app/models/User";
-import "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { classes } from "@/app/db/schema";
+import { eq } from "drizzle-orm";
 
-// List all classes for the school
+function splitLevelAndArm(className: string, fallbackLevel: string) {
+  const normalized = String(className || "").trim();
+  const parts = normalized.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    const arm = parts[parts.length - 1].toUpperCase();
+    const level = parts.slice(0, -1).join(" ") || fallbackLevel;
+    return { level, arm };
+  }
+
+  return {
+    level: fallbackLevel || normalized,
+    arm: "A",
+  };
+}
+
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!user.schoolId) {
-      return NextResponse.json(
-        { error: "Invalid session. Please log in again." },
-        { status: 403 }
-      );
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    const classes = await Class.find({ schoolId: user.schoolId })
-      .populate("classTeacherId", "fullName email")
-      .populate("subjectIds", "name code")
-      .sort({ level: 1, arm: 1 });
+    const rows = await d1
+      .select()
+      .from(classes)
+      .where(eq(classes.schoolId, user.schoolId));
 
-    return NextResponse.json({ classes });
-  } catch (error: any) {
-    console.error("List classes error:", error);
+    const payload = rows.map((row) => {
+      const parsed = splitLevelAndArm(row.name, row.level);
+      return {
+        _id: row.id,
+        id: row.id,
+        name: row.name,
+        level: parsed.level,
+        arm: parsed.arm,
+        subjectIds: [],
+      };
+    });
+
+    return NextResponse.json({ classes: payload });
+  } catch (error: unknown) {
+    console.error("Fetch classes error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to list classes" },
+      { error: error instanceof Error ? error.message : "Failed to fetch classes" },
       { status: 500 }
     );
   }

@@ -1,34 +1,31 @@
-import connectDB from "@/app/utils/db";
-import Subscription from "@/app/models/Subscription";
-import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
-  await connectDB();
-  const token = req.headers.get("authorization")?.split(" ")[1];
-  const admin: any = verifyToken(token || "");
+function d1OnlyResponse() {
+  return NextResponse.json(
+    {
+      error: "This endpoint is temporarily unavailable while migrating fully to D1.",
+      code: "D1_MIGRATION_PENDING",
+    },
+    { status: 501 }
+  );
+}
 
-  if (!admin || admin.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+export async function GET() {
+  return d1OnlyResponse();
+}
 
-  // TODO: Integrate with actual payment gateway (Paystack/Flutterwave)
-  // This should verify the payment reference with the gateway
-  // const { reference } = await req.json();
-  // const paymentVerified = await verifyPaymentWithGateway(reference);
+export async function POST() {
+  return d1OnlyResponse();
+}
 
-  const sub = await Subscription.findOne({ 
-    schoolId: admin.schoolId,
-    status: "INACTIVE"
-  }).sort({ createdAt: -1 });
+export async function PUT() {
+  return d1OnlyResponse();
+}
 
-  if (!sub) {
-    return NextResponse.json({ error: "No pending subscription found" }, { status: 404 });
-  }
+export async function PATCH() {
+  return d1OnlyResponse();
+}
 
-  sub.status = "ACTIVE";
-  sub.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  await sub.save();
-
-  return NextResponse.json({ status: "Subscription activated" });
+export async function DELETE() {
+  return d1OnlyResponse();
 }

@@ -1,49 +1,45 @@
-import connectDB from "@/app/utils/db";
-import User from "@/app/models/User";
-import Student from "@/app/models/Students";
-import { verifyToken } from "@/app/utils/auth";
-import { allowRoles } from "@/app/utils/permissions";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { users } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
+    const admin: ITokenPayload | null = verifyToken(token || "");
 
-    if (!allowRoles(user, ["ADMIN"])) {
+    if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const parents = await User.find({
-      schoolId: user!.schoolId,
-      role: "PARENT",
-      isActive: true
-    }).select("fullName email");
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    // Get ward count for each parent from Student collection
-    const parentsWithCounts = await Promise.all(
-      parents.map(async (parent) => {
-        const wardCount = await Student.countDocuments({
-          schoolId: user!.schoolId,
-          parentId: parent._id
-        });
-        return {
-          id: parent._id.toString(),
-          fullName: parent.fullName,
-          email: parent.email,
-          wardCount
-        };
+    const parents = await d1
+      .select({
+        id: users.id,
+        fullName: users.name,
+        email: users.email,
       })
-    );
+      .from(users)
+      .where(and(eq(users.schoolId, admin.schoolId), eq(users.role, "PARENT")));
 
     return NextResponse.json({
-      parents: parentsWithCounts
+      parents: parents.map((parent) => ({
+        id: parent.id,
+        fullName: parent.fullName,
+        email: parent.email,
+        wardCount: 0,
+      })),
+      warning: "Parent-ward linking is pending D1 migration.",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Fetch parents error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch parents" },
+      { error: error instanceof Error ? error.message : "Failed to fetch parents" },
       { status: 500 }
     );
   }

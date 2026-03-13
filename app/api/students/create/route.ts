@@ -1,169 +1,213 @@
-import connectDB from "@/app/utils/db";
-import Student from "@/app/models/Students";
-import Class from "@/app/models/Class";
-import User from "@/app/models/User";
-import { verifyToken } from "@/app/utils/auth";
-import bcrypt from "bcryptjs";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { admissionSettings, enrollments, sections, sessions, students, terms } from "@/app/db/schema";
+import { and, eq, like } from "drizzle-orm";
+import { z } from "zod";
+
+function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const name = String(fullName || "").trim();
+  const parts = name.split(/\s+/).filter(Boolean);
+
+  if (parts.length <= 1) {
+    return {
+      firstName: parts[0] || "Student",
+      lastName: "",
+    };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+const createStudentSchema = z.object({
+  fullName: z.string().min(2),
+  admissionNumber: z.string().trim().optional(),
+  gender: z.string().trim().optional(),
+  dateOfBirth: z.string().datetime().optional(),
+  sectionId: z.string().trim().optional(),
+});
+
+function extractSessionStartYear(sessionYear: string): string {
+  const match = sessionYear.match(/\d{4}|\d{2}/);
+  return match ? match[0] : String(new Date().getFullYear());
+}
+
+function formatYear(raw: string, format: string): string {
+  const clean = raw.replace(/\D/g, "");
+  if (format === "YY") {
+    return clean.slice(-2);
+  }
+  return clean.length >= 4 ? clean.slice(0, 4) : String(new Date().getFullYear());
+}
 
 export async function POST(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+    const admin: ITokenPayload | null = verifyToken(token || "");
 
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Only admins can create students" }, { status: 403 });
+    if (!admin || admin.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const {
-      fullName,
-      admissionNumber,
-      dateOfBirth,
-      gender,
-      classId,
-      parentId,
-      parentFullName,
-      parentEmail,
-      parentPhone,
-      parentPassword
-    } = await req.json();
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    if (!fullName || !classId || !admissionNumber) {
+    const parsed = createStudentSchema.safeParse(await req.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Full name, admission number, and class ID are required" },
+        {
+          error: "Invalid student payload",
+          issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        },
         { status: 400 }
       );
     }
 
-    const classDoc = await Class.findOne({
-      _id: classId,
-      schoolId: user.schoolId
-    }).select("_id");
+    const body = parsed.data;
+    const fullName = String(body.fullName || "").trim();
+    let admissionNumber = String(body.admissionNumber || "").trim();
+    const gender = body.gender ? String(body.gender).trim() : null;
+    const dateOfBirth = body.dateOfBirth ? new Date(body.dateOfBirth) : null;
+    const sectionId = body.sectionId ? String(body.sectionId).trim() : null;
 
-    if (!classDoc) {
-      return NextResponse.json({ error: "Class not found" }, { status: 404 });
+    if (!fullName) {
+      return NextResponse.json(
+        { error: "Full name is required" },
+        { status: 400 }
+      );
     }
 
-    const existingStudent = await Student.findOne({
-      schoolId: user.schoolId,
-      admissionNumber
-    }).select("_id");
+    const [settingsRows, currentSessionRows, currentTermRows] = await Promise.all([
+      d1
+        .select()
+        .from(admissionSettings)
+        .where(eq(admissionSettings.schoolId, admin.schoolId))
+        .limit(1),
+      d1
+        .select()
+        .from(sessions)
+        .where(and(eq(sessions.schoolId, admin.schoolId), eq(sessions.isCurrent, true)))
+        .limit(1),
+      d1
+        .select()
+        .from(terms)
+        .where(and(eq(terms.schoolId, admin.schoolId), eq(terms.isCurrent, true)))
+        .limit(1),
+    ]);
 
-    if (existingStudent) {
-      return NextResponse.json({ error: "Admission number already exists" }, { status: 400 });
-    }
-
-    const normalizedEmail = typeof parentEmail === "string" ? parentEmail.trim().toLowerCase() : "";
-    const normalizedPhone = typeof parentPhone === "string" ? parentPhone.trim() : "";
-
-    let linkedParentId = parentId || null;
-    let temporaryParentPassword: string | null = null;
-
-    if (linkedParentId) {
-      const existingParentById = await User.findOne({
-        _id: linkedParentId,
-        schoolId: user.schoolId,
-        role: "PARENT"
-      }).select("_id");
-
-      if (!existingParentById) {
-        return NextResponse.json({ error: "Selected guardian account not found" }, { status: 404 });
-      }
-    } else if (normalizedEmail || normalizedPhone) {
-      let parentByEmail: any = null;
-      let parentByPhone: any = null;
-
-      if (normalizedEmail) {
-        const userWithEmail = await User.findOne({ email: normalizedEmail });
-        if (userWithEmail) {
-          if (userWithEmail.role !== "PARENT") {
-            return NextResponse.json(
-              { error: "Email already belongs to a non-guardian account" },
-              { status: 400 }
-            );
-          }
-
-          if (userWithEmail.schoolId?.toString() !== user.schoolId) {
-            return NextResponse.json(
-              { error: "Guardian email belongs to a different school" },
-              { status: 400 }
-            );
-          }
-
-          parentByEmail = userWithEmail;
-        }
-      }
-
-      if (normalizedPhone) {
-        parentByPhone = await User.findOne({
-          schoolId: user.schoolId,
-          role: "PARENT",
-          phoneNumber: normalizedPhone
-        });
-      }
-
-      if (parentByEmail && parentByPhone && parentByEmail._id.toString() !== parentByPhone._id.toString()) {
+    if (!admissionNumber) {
+      const settings = settingsRows[0];
+      if (!settings) {
         return NextResponse.json(
-          { error: "Guardian email and phone match different accounts. Please select guardian manually." },
+          { error: "Admission settings not configured for this school" },
           { status: 400 }
         );
       }
 
-      const matchedParent = parentByEmail || parentByPhone;
+      const currentSession = currentSessionRows[0];
+      const yearBase = currentSession ? extractSessionStartYear(currentSession.year) : String(new Date().getFullYear());
+      const yearToken = formatYear(yearBase, settings.yearFormat);
+      const prefix = settings.prefix.trim().toUpperCase();
+      const pattern = `${prefix}/${yearToken}/%`;
 
-      if (matchedParent) {
-        linkedParentId = matchedParent._id;
-      } else {
-        if (!parentFullName || !normalizedEmail) {
-          return NextResponse.json(
-            { error: "For new guardian account, guardian full name and email are required" },
-            { status: 400 }
-          );
+      const rows = await d1
+        .select({ admissionNumber: students.admissionNumber })
+        .from(students)
+        .where(and(eq(students.schoolId, admin.schoolId), like(students.admissionNumber, pattern)));
+
+      let max = 0;
+      for (const row of rows) {
+        const parts = String(row.admissionNumber || "").split("/");
+        const last = parts[parts.length - 1] || "0";
+        const n = Number.parseInt(last, 10);
+        if (!Number.isNaN(n) && n > max) {
+          max = n;
         }
+      }
 
-        const rawPassword = parentPassword || Math.random().toString(36).slice(2, 10);
-        const passwordHash = await bcrypt.hash(rawPassword, 10);
+      const next = String(max + 1).padStart(settings.numberLength, "0");
+      admissionNumber = `${prefix}/${yearToken}/${next}`;
+    }
 
-        const newParent = await User.create({
-          fullName: parentFullName,
-          email: normalizedEmail,
-          phoneNumber: normalizedPhone || null,
-          passwordHash,
-          role: "PARENT",
-          schoolId: user.schoolId,
-          isActive: true
+    const exists = await d1
+      .select({ id: students.id })
+      .from(students)
+      .where(
+        and(
+          eq(students.schoolId, admin.schoolId),
+          eq(students.admissionNumber, admissionNumber)
+        )
+      )
+      .limit(1);
+
+    if (exists.length > 0) {
+      return NextResponse.json(
+        { error: "A student with this admission number already exists" },
+        { status: 409 }
+      );
+    }
+
+    const now = new Date();
+    const studentId = crypto.randomUUID();
+    const names = splitFullName(fullName);
+
+    await d1.insert(students).values({
+      id: studentId,
+      schoolId: admin.schoolId,
+      firstName: names.firstName,
+      lastName: names.lastName,
+      admissionNumber,
+      gender,
+      dateOfBirth,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    if (sectionId && currentSessionRows[0] && currentTermRows[0]) {
+      const sectionRows = await d1
+        .select({ id: sections.id, classId: sections.classId })
+        .from(sections)
+        .where(and(eq(sections.id, sectionId), eq(sections.schoolId, admin.schoolId)))
+        .limit(1);
+
+      const section = sectionRows[0];
+      if (section) {
+        await d1.insert(enrollments).values({
+          id: crypto.randomUUID(),
+          schoolId: admin.schoolId,
+          studentId,
+          classId: section.classId,
+          sectionId: section.id,
+          sessionId: currentSessionRows[0].id,
+          termId: currentTermRows[0].id,
+          createdAt: now,
+          updatedAt: now,
         });
-
-        linkedParentId = newParent._id;
-        temporaryParentPassword = parentPassword ? null : rawPassword;
       }
     }
 
-    const student = await Student.create({
-      schoolId: user.schoolId,
-      fullName,
-      admissionNumber,
-      dateOfBirth: dateOfBirth || null,
-      gender: gender || null,
-      parentId: linkedParentId,
-      currentClassId: classId
-    });
-
-    await Class.findByIdAndUpdate(classId, {
-      $addToSet: { studentIds: student._id }
-    });
-
     return NextResponse.json({
-      studentId: student._id.toString(),
-      parentId: linkedParentId,
-      temporaryParentPassword,
-      message: "Student created successfully"
+      message: "Student created successfully",
+      student: {
+        _id: studentId,
+        id: studentId,
+        fullName,
+        admissionNumber,
+        gender,
+        dateOfBirth,
+      },
+      warning:
+        "Guardian linking is pending D1 migration and was skipped for this student.",
     });
-  } catch (error: any) {
-    console.error("Student creation error:", error);
+  } catch (error: unknown) {
+    console.error("Create student error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to create student" },
+      { error: error instanceof Error ? error.message : "Failed to create student" },
       { status: 500 }
     );
   }

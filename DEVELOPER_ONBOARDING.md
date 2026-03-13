@@ -2,7 +2,7 @@
 
 ## Welcome to the Reschool Manager System
 
-This is a **production-grade school management system** built with Next.js, MongoDB, and TypeScript. This guide helps new developers understand and contribute to the codebase.
+This is a **production-grade school management system** built with Next.js, Cloudflare D1, and TypeScript. This guide helps new developers understand and contribute to the codebase.
 
 ---
 
@@ -43,7 +43,7 @@ app/
 │   ├── auth/              # Authentication
 │   └── ...
 │
-├── models/                 # MongoDB schemas
+├── models/                 # Cloudflare D1 schemas
 │   ├── Students.ts
 │   ├── DailyMark.ts
 │   ├── Score.ts
@@ -56,7 +56,7 @@ app/
 │   └── ...
 │
 ├── utils/                 # Helper functions
-│   ├── db.ts             # MongoDB connection
+│   ├── db.ts             # Cloudflare D1 connection
 │   ├── auth.ts           # JWT verification
 │   ├── permissions.ts    # Access control
 │   ├── termGuard.ts      # Payment gating
@@ -80,7 +80,7 @@ app/
 pnpm install
 
 # Create .env.local (ask team for real values)
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/reschool
+Cloudflare D1_URI=Cloudflare D1+srv://user:pass@cluster.Cloudflare D1.net/reschool
 JWT_SECRET=your_secret_key_here
 NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
@@ -100,8 +100,8 @@ curl http://localhost:3000/api/teachers/leaderboard \
 
 ### 4. Database
 ```bash
-# MongoDB must be running locally or accessible via MONGODB_URI
-# Connect to MongoDB Compass to view data
+# Cloudflare D1 must be running locally or accessible via Cloudflare D1_URI
+# Connect to Cloudflare D1 Compass to view data
 ```
 
 ---
@@ -266,10 +266,10 @@ touch app/models/MyModel.ts
 
 **Step 2:** Define schema
 ```typescript
-import mongoose, { Schema, Document } from "mongoose";
+import Drizzle ORM, { Schema, Document } from "Drizzle ORM";
 
 export interface IMyModel extends Document {
-  schoolId: mongoose.Types.ObjectId;
+  schoolId: Drizzle ORM.Types.ObjectId;
   name: string;
   email: string;
   createdAt?: Date;
@@ -289,7 +289,7 @@ const myModelSchema = new Schema<IMyModel>(
 myModelSchema.index({ schoolId: 1, createdAt: -1 });
 myModelSchema.index({ email: 1 });
 
-export default mongoose.models.MyModel || mongoose.model<IMyModel>("MyModel", myModelSchema);
+export default Drizzle ORM.models.MyModel || Drizzle ORM.model<IMyModel>("MyModel", myModelSchema);
 ```
 
 **Step 3:** Import and use in API
@@ -475,11 +475,11 @@ Authorization: Bearer @token
 
 ## 🐛 Debugging
 
-### Check MongoDB Connection
+### Check Cloudflare D1 Connection
 ```typescript
 // In any route
 const client = await connectDB();
-console.log("Connected to:", process.env.MONGODB_URI);
+console.log("Connected to:", process.env.Cloudflare D1_URI);
 ```
 
 ### Log Database Queries
@@ -618,9 +618,9 @@ return NextResponse.json({ admin });
 - API Routes: https://nextjs.org/docs/app/building-your-application/routing/route-handlers
 - Deployment: https://nextjs.org/docs/deployment
 
-### MongoDB
-- Query guide: https://docs.mongodb.com/manual/reference/method/
-- Mongoose docs: https://mongoosejs.com/docs/api.html
+### Cloudflare D1
+- Query guide: https://docs.Cloudflare D1.com/manual/reference/method/
+- Drizzle ORM docs: https://Drizzle ORMjs.com/docs/api.html
 
 ### JWT
 - Explanation: https://jwt.io/introduction

@@ -85,10 +85,10 @@ if (studentAttendance.attendancePercentage < 60) {
 
 ## Required Database Index
 
-To optimize notification queries, add this index to MongoDB:
+To optimize notification queries, add this index to Cloudflare D1:
 
 ```javascript
-// Run in MongoDB console
+// Run in Cloudflare D1 console
 db.notifications.createIndex({
   "recipientId": 1,
   "readAt": 1,
@@ -102,7 +102,7 @@ db.notifications.createIndex({
 });
 ```
 
-Or in Mongoose (add to Notification model):
+Or in Drizzle ORM (add to Notification model):
 ```typescript
 // In notificationSchema
 notificationSchema.index({ recipientId: 1, readAt: 1, sentAt: -1 });
@@ -313,7 +313,7 @@ Already implemented with `limit` parameter. Default: 100 records.
 ## Deployment Steps
 
 1. **Deploy API routes:** All 10 new routes to production server
-2. **Create indices:** Run MongoDB index creation script
+2. **Create indices:** Run Cloudflare D1 index creation script
 3. **Hook integrate:**  Add notification calls to existing routes (4 points above)
 4. **UI integration:** Build admin/parent/teacher pages (next phase)
 5. **Data migration:** Generate StudentLifecycleRecord for existing students (optional)

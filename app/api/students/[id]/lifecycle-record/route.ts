@@ -1,49 +1,31 @@
-import connectDB from "@/app/utils/db";
-import StudentLifecycleRecord from "@/app/models/StudentLifecycleRecord";
-import ReportCard from "@/app/models/ReportCard";
-import Certificate from "@/app/models/Certificate";
-import Student from "@/app/models/Students";
-import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    await connectDB();
-    const { id } = await params;
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+function d1OnlyResponse() {
+  return NextResponse.json(
+    {
+      error: "This endpoint is temporarily unavailable while migrating fully to D1.",
+      code: "D1_MIGRATION_PENDING",
+    },
+    { status: 501 }
+  );
+}
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+export async function GET() {
+  return d1OnlyResponse();
+}
 
-    // Fetch student lifecycle record
-    const lifecycleRecord = await StudentLifecycleRecord.findOne({
-      schoolId: user.schoolId,
-      studentId: id
-    }).populate("studentId", "fullName admissionNumber");
+export async function POST() {
+  return d1OnlyResponse();
+}
 
-    if (!lifecycleRecord) {
-      return NextResponse.json({ error: "Record not found" }, { status: 404 });
-    }
+export async function PUT() {
+  return d1OnlyResponse();
+}
 
-    // Verify access: admins see all, parents see only their wards, teachers see their class students
-    if (user.role === "PARENT") {
-      const student = await Student.findById(id);
-      if (student?.parentId?.toString() !== user.userId) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-      }
-    }
+export async function PATCH() {
+  return d1OnlyResponse();
+}
 
-    return NextResponse.json({ lifecycleRecord });
-  } catch (error: any) {
-    console.error("Fetch lifecycle record error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch lifecycle record" },
-      { status: 500 }
-    );
-  }
+export async function DELETE() {
+  return d1OnlyResponse();
 }

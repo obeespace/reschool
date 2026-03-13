@@ -9,7 +9,7 @@ Comprehensive audit of all API endpoints and data fetching layers completed. All
 - ✅ School-scoped data isolation (schoolId filtering)
 - ✅ User-specific data access (teachers see their marks, parents see their children)
 - ✅ Correct field references (no stale field names)
-- ✅ Proper Mongoose population of references
+- ✅ Proper Drizzle ORM population of references
 
 ## Issues Found & Fixed
 
@@ -52,7 +52,7 @@ Comprehensive audit of all API endpoints and data fetching layers completed. All
 
 ### Admin Dashboard (`/admin/dashboard`)
 - **API**: `/api/admin/stats`
-- **Data Source**: MongoDB queries properly scoped to admin's school
+- **Data Source**: Cloudflare D1 queries properly scoped to admin's school
 - **Verification**: 
   - ✅ Counts teachers by schoolId
   - ✅ Counts parents by schoolId  
@@ -205,7 +205,7 @@ All 75 routes compiled successfully
 - Each parent-student relationship is explicitly tracked
 
 ### 4. **Referential Integrity** ✅
-- All foreign key references use proper Mongoose population
+- All foreign key references use proper Drizzle ORM population
 - No stale field names (wardIds was removed from references)
 - Academic year filtering works correctly
 - Class hierarchy properly maintained

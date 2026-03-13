@@ -1,129 +1,98 @@
-import connectDB from "@/app/utils/db";
-import Announcement from "@/app/models/Announcements";
-import AnnouncementRead from "@/app/models/AnnouncementRead";
-import Student from "@/app/models/Students";
-import "@/app/models/Class";
-import "@/app/models/User";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { auditLogs } from "@/app/db/schema";
+import { and, desc, eq } from "drizzle-orm";
 
-export async function GET(req: Request) {
+function parseMeta(metaJson: string | null): Record<string, unknown> {
+  if (!metaJson) return {};
   try {
-    await connectDB();
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    let announcementsQuery: any = { schoolId: user.schoolId };
-
-    // Build query based on user role (same logic as list endpoint)
-    if (user.role === "ADMIN") {
-      // Admin sees all announcements in their school
-      announcementsQuery = { schoolId: user.schoolId };
-    } else if (user.role === "TEACHER") {
-      announcementsQuery = {
-        schoolId: user.schoolId,
-        $or: [
-          { 
-            announcementType: "GENERAL",
-            targetAudience: { $in: ["ALL", "TEACHERS_ONLY", "TEACHERS_AND_PARENTS"] }
-          },
-          { 
-            announcementType: "CLASS_SPECIFIC",
-            postedBy: user.userId
-          }
-        ]
-      };
-    } else if (user.role === "PARENT") {
-      const wards = await Student.find({ 
-        schoolId: user.schoolId, 
-        parentId: user.userId 
-      }).select("currentClassId");
-      
-      const wardClassIds = wards.map((w: any) => w.currentClassId).filter(Boolean);
-
-      announcementsQuery = {
-        schoolId: user.schoolId,
-        $or: [
-          { 
-            announcementType: "GENERAL",
-            targetAudience: { $in: ["ALL", "PARENTS_ONLY", "TEACHERS_AND_PARENTS"] }
-          },
-          { 
-            announcementType: "CLASS_SPECIFIC",
-            classId: { $in: wardClassIds }
-          }
-        ]
-      };
-    }
-
-    // Get recent announcements (last 7 days)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const recentAnnouncements = await Announcement.find({
-      ...announcementsQuery,
-      createdAt: { $gte: sevenDaysAgo }
-    })
-      .populate("postedBy", "firstName lastName")
-      .populate("classId", "name")
-      .sort({ createdAt: -1 })
-      .limit(10);
-
-    // Get read status for these announcements
-    const readAnnouncements = await AnnouncementRead.find({
-      userId: user.userId,
-      announcementId: { $in: recentAnnouncements.map(a => a._id) }
-    });
-
-    const readIds = new Set(readAnnouncements.map(r => r.announcementId.toString()));
-
-    // Calculate unread count
-    const unreadCount = recentAnnouncements.filter(a => !readIds.has(a._id.toString())).length;
-
-    // Format recent announcements
-    const formattedAnnouncements = recentAnnouncements.map(a => {
-      const isNew = !readIds.has(a._id.toString());
-      const timeAgo = getTimeAgo(a.createdAt);
-
-      return {
-        id: a._id,
-        title: a.title,
-        message: a.message,
-        isNew,
-        postedBy: {
-          name: a.postedBy?.fullName || [a.postedBy?.firstName, a.postedBy?.lastName].filter(Boolean).join(" ") || "System"
-        },
-        timeAgo,
-        className: a.classId?.name || null
-      };
-    });
-
-    return NextResponse.json({ 
-      success: true,
-      unreadCount,
-      recentAnnouncements: formattedAnnouncements
-    });
-  } catch (error: any) {
-    console.error("Error fetching unread count:", error);
-    // Return empty data instead of error to prevent UI breaks
-    return NextResponse.json({ 
-      success: true,
-      unreadCount: 0,
-      recentAnnouncements: []
-    });
+    return JSON.parse(metaJson) as Record<string, unknown>;
+  } catch {
+    return {};
   }
 }
 
-function getTimeAgo(date: Date): string {
-  const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
-  
-  if (seconds < 60) return "Just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-  return new Date(date).toLocaleDateString();
+function isVisibleToRole(
+  targetAudience: string,
+  role: ITokenPayload["role"]
+): boolean {
+  if (role === "ADMIN") return true;
+  if (role === "TEACHER") {
+    return targetAudience === "ALL" || targetAudience === "TEACHERS_ONLY";
+  }
+  return targetAudience === "ALL" || targetAudience === "PARENTS_ONLY";
+}
+
+export async function GET(req: Request) {
+  try {
+    const token = req.headers.get("authorization")?.split(" ")[1];
+    const user: ITokenPayload | null = verifyToken(token || "");
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
+
+    const [createdRows, readRows] = await Promise.all([
+      d1
+        .select({ metaJson: auditLogs.metaJson, createdAt: auditLogs.createdAt })
+        .from(auditLogs)
+        .where(and(eq(auditLogs.schoolId, user.schoolId), eq(auditLogs.action, "ANNOUNCEMENT_CREATED")))
+        .orderBy(desc(auditLogs.createdAt)),
+      d1
+        .select({ metaJson: auditLogs.metaJson })
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.schoolId, user.schoolId),
+            eq(auditLogs.action, "ANNOUNCEMENT_READ"),
+            eq(auditLogs.actorId, user.userId)
+          )
+        ),
+    ]);
+
+    const readIds = new Set<string>();
+    for (const row of readRows) {
+      const meta = parseMeta(row.metaJson);
+      const announcementId = meta.announcementId ? String(meta.announcementId) : "";
+      if (announcementId) readIds.add(announcementId);
+    }
+
+    const visibleAnnouncements: Array<{ id: string; title: string; createdAt: number }> = [];
+
+    for (const row of createdRows) {
+      const meta = parseMeta(row.metaJson);
+      const announcementId = meta.announcementId ? String(meta.announcementId) : "";
+      const title = meta.title ? String(meta.title) : "Announcement";
+      const targetAudience = meta.targetAudience ? String(meta.targetAudience) : "ALL";
+
+      if (!announcementId) continue;
+      if (!isVisibleToRole(targetAudience, user.role)) continue;
+
+      visibleAnnouncements.push({
+        id: announcementId,
+        title,
+        createdAt: row.createdAt.getTime(),
+      });
+    }
+
+    const unreadAnnouncements = visibleAnnouncements.filter((item) => !readIds.has(item.id));
+
+    return NextResponse.json({
+      unreadCount: unreadAnnouncements.length,
+      recentAnnouncements: unreadAnnouncements.slice(0, 5),
+      storageMode: "audit-log-transitional",
+    });
+  } catch (error: unknown) {
+    console.error("Unread announcement count error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch unread count" },
+      { status: 500 }
+    );
+  }
 }

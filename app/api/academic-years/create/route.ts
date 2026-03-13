@@ -1,21 +1,25 @@
-import connectDB from "@/app/utils/db";
-import AcademicYear from "@/app/models/AcademicYear";
-import Term from "@/app/models/Term";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { schools, sessions, terms as d1Terms } from "@/app/db/schema";
+import { eq } from "drizzle-orm";
+import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: any = verifyToken(token || "");
+    const admin: ITokenPayload | null = verifyToken(token || "");
 
     if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { name, startDate, endDate, setAsActive } = await req.json();
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
+    const { name, startDate, endDate, setAsActive } = await req.json();
     if (!name || !startDate || !endDate) {
       return NextResponse.json(
         { error: "Name, start date, and end date are required" },
@@ -23,74 +27,81 @@ export async function POST(req: Request) {
       );
     }
 
-    // If setting as active, deactivate all other academic years and terms for this school
-    if (setAsActive) {
-      await AcademicYear.updateMany(
-        { schoolId: admin.schoolId, isActive: true },
-        { isActive: false }
-      );
-      await Term.updateMany(
-        { schoolId: admin.schoolId, isActive: true },
-        { isActive: false }
-      );
-    }
-
-    const academicYear = await AcademicYear.create({
-      schoolId: admin.schoolId,
-      name,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      isActive: setAsActive || false,
-      term: 1
-    });
-
-    // Automatically create 3 terms for this academic year
+    const now = Date.now();
+    const sessionId = crypto.randomUUID();
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    const termDurationDays = Math.floor(totalDays / 3);
 
-    const terms = [];
+    await d1
+      .insert(schools)
+      .values({ id: admin.schoolId, name: "School", createdAt: now, updatedAt: now })
+      .onConflictDoNothing();
+
+    if (setAsActive) {
+      await d1.update(sessions).set({ isCurrent: false, updatedAt: now }).where(eq(sessions.schoolId, admin.schoolId));
+      await d1.update(d1Terms).set({ isCurrent: false, updatedAt: now }).where(eq(d1Terms.schoolId, admin.schoolId));
+    }
+
+    await d1.insert(sessions).values({
+      id: sessionId,
+      schoolId: admin.schoolId,
+      year: name,
+      startDate: start,
+      endDate: end,
+      isCurrent: !!setAsActive,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const totalDays = Math.max(3, Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    const termDurationDays = Math.max(1, Math.floor(totalDays / 3));
+    const createdTerms: Array<{ termId: string; termNumber: number; startDate: Date; endDate: Date }> = [];
+
     for (let termNumber = 1; termNumber <= 3; termNumber++) {
+      const termId = crypto.randomUUID();
       const termStart = new Date(start);
       termStart.setDate(start.getDate() + (termNumber - 1) * termDurationDays);
-      
+
       const termEnd = new Date(start);
       if (termNumber === 3) {
-        // Last term ends on academic year end date
         termEnd.setTime(end.getTime());
       } else {
         termEnd.setDate(start.getDate() + termNumber * termDurationDays - 1);
       }
 
-      const term = await Term.create({
+      await d1.insert(d1Terms).values({
+        id: termId,
         schoolId: admin.schoolId,
-        academicYearId: academicYear._id,
+        sessionId,
         termNumber,
+        name: `Term ${termNumber}`,
         startDate: termStart,
         endDate: termEnd,
-        isActive: setAsActive && termNumber === 1, // Only first term active if academic year is active
+        isCurrent: !!setAsActive && termNumber === 1,
         isPaid: false,
-        isClosed: false
+        isClosed: false,
+        paymentDate: null,
+        paymentReference: null,
+        createdAt: now,
+        updatedAt: now,
       });
 
-      terms.push({
-        termId: term._id.toString(),
-        termNumber: term.termNumber,
-        startDate: term.startDate,
-        endDate: term.endDate
-      });
+      createdTerms.push({ termId, termNumber, startDate: termStart, endDate: termEnd });
     }
 
+    invalidateServerCacheByPrefix(`academic-years:list:${admin.schoolId}`);
+    invalidateServerCacheByPrefix(`terms:list:${admin.schoolId}:`);
+    invalidateServerCacheByPrefix(`admin:stats:${admin.schoolId}`);
+
     return NextResponse.json({
-      academicYearId: academicYear._id.toString(),
-      terms,
-      message: "Academic year and 3 terms created successfully"
+      academicYearId: sessionId,
+      terms: createdTerms,
+      message: "Academic year and 3 terms created successfully",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Academic year creation error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to create academic year" },
+      { error: error instanceof Error ? error.message : "Failed to create academic year" },
       { status: 500 }
     );
   }

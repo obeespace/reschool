@@ -30,7 +30,8 @@ export default function LoginPage() {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
 
-        toast.success(`Welcome back, ${data.user.name}!`);
+        const displayName = data?.user?.fullName || data?.user?.name || "there";
+        toast.success(`Welcome back, ${displayName}!`);
 
         // Redirect based on role with fallback
         switch (data.user.role) {

@@ -1,17 +1,31 @@
-import connectDB from "@/app/utils/db";
-import School from "@/app/models/School";
-import User from "@/app/models/User";
-import Class from "@/app/models/Class";
-import CurriculumSuggestion from "@/app/models/CurriculumSuggestion";
 import { NextResponse } from "next/server";
 
+function d1OnlyResponse() {
+  return NextResponse.json(
+    {
+      error: "This endpoint is temporarily unavailable while migrating fully to D1.",
+      code: "D1_MIGRATION_PENDING",
+    },
+    { status: 501 }
+  );
+}
+
 export async function GET() {
-  await connectDB();
-  return NextResponse.json({
-    schools: await School.countDocuments(),
-    users: await User.countDocuments(),
-    classes: await Class.countDocuments(),
-    curriculumSuggestions: await CurriculumSuggestion.countDocuments(),
-    status: "Week 1 SaaS Progress OK"
-  });
+  return d1OnlyResponse();
+}
+
+export async function POST() {
+  return d1OnlyResponse();
+}
+
+export async function PUT() {
+  return d1OnlyResponse();
+}
+
+export async function PATCH() {
+  return d1OnlyResponse();
+}
+
+export async function DELETE() {
+  return d1OnlyResponse();
 }

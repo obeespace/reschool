@@ -1,66 +1,31 @@
-import connectDB from "@/app/utils/db";
-import Term from "@/app/models/Term";
-import Student from "@/app/models/Students";
-import StudentClassHistory from "@/app/models/StudentClassHistory";
-import "@/app/models/AcademicYear";
-import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
-export async function GET(req: Request) {
-  try {
-    await connectDB();
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const parent: any = verifyToken(token || "");
+function d1OnlyResponse() {
+  return NextResponse.json(
+    {
+      error: "This endpoint is temporarily unavailable while migrating fully to D1.",
+      code: "D1_MIGRATION_PENDING",
+    },
+    { status: 501 }
+  );
+}
 
-    if (!parent || parent.role !== "PARENT") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+export async function GET() {
+  return d1OnlyResponse();
+}
 
-    // Get all children of this parent
-    const students = await Student.find({
-      schoolId: parent.schoolId,
-      parentId: parent.userId
-    });
+export async function POST() {
+  return d1OnlyResponse();
+}
 
-    if (students.length === 0) {
-      return NextResponse.json({ terms: [] });
-    }
+export async function PUT() {
+  return d1OnlyResponse();
+}
 
-    const studentIds = students.map((s) => s._id);
+export async function PATCH() {
+  return d1OnlyResponse();
+}
 
-    // Get unique academic years where these students have records
-    const classHistories = await StudentClassHistory.find({
-      schoolId: parent.schoolId,
-      studentId: { $in: studentIds }
-    }).distinct("academicYearId");
-
-    // Fetch all paid terms for these academic years (parents can only access paid terms)
-    const terms = await Term.find({
-      schoolId: parent.schoolId,
-      academicYearId: { $in: classHistories },
-      isPaid: true
-    })
-      .populate("academicYearId", "name")
-      .sort({ startDate: -1 });
-
-    return NextResponse.json({
-      terms: terms.map(term => ({
-        id: term._id.toString(),
-        academicYear: (term.academicYearId as any)?.name || "N/A",
-        academicYearId: term.academicYearId.toString(),
-        termNumber: term.termNumber,
-        startDate: term.startDate,
-        endDate: term.endDate,
-        isActive: term.isActive,
-        isPaid: term.isPaid,
-        isClosed: term.isClosed
-      }))
-    });
-  } catch (error: any) {
-    console.error("Fetch academic years error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch academic years" },
-      { status: 500 }
-    );
-  }
+export async function DELETE() {
+  return d1OnlyResponse();
 }

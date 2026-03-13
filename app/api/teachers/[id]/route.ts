@@ -1,66 +1,31 @@
-import connectDB from "@/app/utils/db";
-import User from "@/app/models/User";
-import TeacherProfile from "@/app/models/TeacherProfile";
-import "@/app/models/Class";
-import "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    await connectDB();
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin = verifyToken(token || "");
+function d1OnlyResponse() {
+  return NextResponse.json(
+    {
+      error: "This endpoint is temporarily unavailable while migrating fully to D1.",
+      code: "D1_MIGRATION_PENDING",
+    },
+    { status: 501 }
+  );
+}
 
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+export async function GET() {
+  return d1OnlyResponse();
+}
 
-    const { id: teacherId } = await params;
+export async function POST() {
+  return d1OnlyResponse();
+}
 
-    // Get user info
-    const user = await User.findOne({ 
-      _id: teacherId, 
-      schoolId: admin.schoolId,
-      role: "TEACHER" 
-    });
+export async function PUT() {
+  return d1OnlyResponse();
+}
 
-    if (!user) {
-      return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
-    }
+export async function PATCH() {
+  return d1OnlyResponse();
+}
 
-    // Get teacher profile
-    const teacherProfile = await TeacherProfile.findOne({ 
-      userId: teacherId,
-      schoolId: admin.schoolId 
-    })
-      .populate("classTeacherOf", "name level arm")
-      .populate({
-        path: "subjectsAndClasses.subjectId",
-        select: "name code"
-      })
-      .populate({
-        path: "subjectsAndClasses.classIds",
-        select: "name level arm"
-      });
-
-    const teacher = {
-      _id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      classTeacherOf: teacherProfile?.classTeacherOf || null,
-      subjectsAndClasses: teacherProfile?.subjectsAndClasses || []
-    };
-
-    return NextResponse.json({ teacher });
-  } catch (error: any) {
-    console.error("Get teacher profile error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch teacher profile" },
-      { status: 500 }
-    );
-  }
+export async function DELETE() {
+  return d1OnlyResponse();
 }
