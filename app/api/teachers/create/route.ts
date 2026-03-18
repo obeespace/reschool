@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const now = Date.now();
+    const now = new Date();
     const teacherId = crypto.randomUUID();
     const passwordHash = await bcrypt.hash(password, 10);
 

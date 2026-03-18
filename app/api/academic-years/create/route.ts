@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const now = Date.now();
+    const now = new Date();
     const sessionId = crypto.randomUUID();
     const start = new Date(startDate);
     const end = new Date(endDate);

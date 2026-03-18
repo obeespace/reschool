@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Academic year ID is required" }, { status: 400 });
     }
 
-    const now = Date.now();
+    const now = new Date();
     await d1.update(sessions).set({ isCurrent: false, updatedAt: now }).where(eq(sessions.schoolId, admin.schoolId));
     await d1.update(terms).set({ isCurrent: false, updatedAt: now }).where(eq(terms.schoolId, admin.schoolId));
 

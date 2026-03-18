@@ -1,18 +1,19 @@
 import {
   createD1Client,
   createLocalLibsqlClient,
+  type D1DatabaseBinding,
   type D1Client,
 } from "@/app/db/client";
 import fs from "node:fs";
 import path from "node:path";
 
 type GlobalWithD1 = typeof globalThis & {
-  DB?: D1Database;
-  __D1_DB__?: D1Database;
+  DB?: D1DatabaseBinding;
+  __D1_DB__?: D1DatabaseBinding;
   __LOCAL_D1_CLIENT__?: D1Client;
 };
 
-function resolveD1Database(): D1Database | null {
+function resolveD1Database(): D1DatabaseBinding | null {
   const g = globalThis as GlobalWithD1;
   return g.DB ?? g.__D1_DB__ ?? null;
 }

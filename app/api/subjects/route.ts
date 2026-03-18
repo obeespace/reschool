@@ -65,7 +65,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Subject name is required" }, { status: 400 });
     }
 
-    const now = Date.now();
+    const now = new Date();
     const subjectId = crypto.randomUUID();
 
     await d1.insert(subjects).values({

@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Term not found" }, { status: 404 });
     }
 
-    const now = Date.now();
+    const now = new Date();
     await d1.update(terms).set({ isCurrent: false, updatedAt: now }).where(eq(terms.schoolId, admin.schoolId));
     await d1.update(sessions).set({ isCurrent: false, updatedAt: now }).where(eq(sessions.schoolId, admin.schoolId));
     await d1.update(terms).set({ isCurrent: true, updatedAt: now }).where(eq(terms.id, termId));

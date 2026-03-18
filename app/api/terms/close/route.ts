@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
     }
 
-    const now = Date.now();
+    const now = new Date();
     const updated = await d1
       .update(terms)
       .set({ isClosed: true, isCurrent: false, updatedAt: now })
