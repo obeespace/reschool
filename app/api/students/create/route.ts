@@ -1,7 +1,18 @@
+import bcrypt from "bcryptjs";
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { admissionSettings, enrollments, sections, sessions, students, terms } from "@/app/db/schema";
+import {
+  admissionSettings,
+  classes,
+  enrollments,
+  parentWardLinks,
+  sections,
+  sessions,
+  students,
+  terms,
+  users,
+} from "@/app/db/schema";
 import { and, eq, like } from "drizzle-orm";
 import { z } from "zod";
 
@@ -26,8 +37,13 @@ const createStudentSchema = z.object({
   fullName: z.string().min(2),
   admissionNumber: z.string().trim().optional(),
   gender: z.string().trim().optional(),
-  dateOfBirth: z.string().datetime().optional(),
+  dateOfBirth: z.string().trim().optional(),
+  classId: z.string().trim().optional(),
   sectionId: z.string().trim().optional(),
+  parentFullName: z.string().trim().optional(),
+  parentEmail: z.string().trim().optional(),
+  parentPhone: z.string().trim().optional(),
+  parentPassword: z.string().trim().optional(),
 });
 
 function extractSessionStartYear(sessionYear: string): string {
@@ -72,8 +88,14 @@ export async function POST(req: Request) {
     const fullName = String(body.fullName || "").trim();
     let admissionNumber = String(body.admissionNumber || "").trim();
     const gender = body.gender ? String(body.gender).trim() : null;
-    const dateOfBirth = body.dateOfBirth ? new Date(body.dateOfBirth) : null;
+    const parsedDob = body.dateOfBirth ? new Date(body.dateOfBirth) : null;
+    const dateOfBirth = parsedDob && Number.isFinite(parsedDob.getTime()) ? parsedDob : null;
+    const classId = body.classId ? String(body.classId).trim() : null;
     const sectionId = body.sectionId ? String(body.sectionId).trim() : null;
+    const parentFullName = String(body.parentFullName || "").trim();
+    const parentEmailRaw = String(body.parentEmail || "").trim().toLowerCase();
+    const parentPhone = String(body.parentPhone || "").trim();
+    const parentPassword = String(body.parentPassword || "").trim();
 
     if (!fullName) {
       return NextResponse.json(
@@ -156,40 +178,135 @@ export async function POST(req: Request) {
     const studentId = crypto.randomUUID();
     const names = splitFullName(fullName);
 
-    await d1.insert(students).values({
-      id: studentId,
-      schoolId: admin.schoolId,
-      firstName: names.firstName,
-      lastName: names.lastName,
-      admissionNumber,
-      gender,
-      dateOfBirth,
-      createdAt: now,
-      updatedAt: now,
-    });
+    let resolvedClassId: string | null = null;
+    let resolvedSectionId: string | null = null;
 
-    if (sectionId && currentSessionRows[0] && currentTermRows[0]) {
+    if (sectionId) {
       const sectionRows = await d1
         .select({ id: sections.id, classId: sections.classId })
         .from(sections)
         .where(and(eq(sections.id, sectionId), eq(sections.schoolId, admin.schoolId)))
         .limit(1);
 
-      const section = sectionRows[0];
-      if (section) {
-        await d1.insert(enrollments).values({
+      if (sectionRows[0]) {
+        resolvedSectionId = sectionRows[0].id;
+        resolvedClassId = sectionRows[0].classId;
+      }
+    }
+
+    if (!resolvedClassId && classId) {
+      const classRows = await d1
+        .select({ id: classes.id })
+        .from(classes)
+        .where(and(eq(classes.id, classId), eq(classes.schoolId, admin.schoolId)))
+        .limit(1);
+
+      if (classRows[0]) {
+        resolvedClassId = classRows[0].id;
+      }
+    }
+
+    let temporaryParentPassword: string | null = null;
+
+    await d1.transaction(async (tx) => {
+      await tx.insert(students).values({
+        id: studentId,
+        schoolId: admin.schoolId,
+        firstName: names.firstName,
+        lastName: names.lastName,
+        admissionNumber,
+        gender,
+        dateOfBirth,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      if (resolvedClassId && currentSessionRows[0] && currentTermRows[0]) {
+        await tx.insert(enrollments).values({
           id: crypto.randomUUID(),
           schoolId: admin.schoolId,
           studentId,
-          classId: section.classId,
-          sectionId: section.id,
+          classId: resolvedClassId,
+          sectionId: resolvedSectionId,
           sessionId: currentSessionRows[0].id,
           termId: currentTermRows[0].id,
           createdAt: now,
           updatedAt: now,
         });
       }
-    }
+
+      if (parentEmailRaw || parentPhone) {
+        const digits = parentPhone.replace(/\D/g, "");
+        const parentEmail = parentEmailRaw || (digits ? `parent-${digits}@local.reschool` : `parent-${crypto.randomUUID()}@local.reschool`);
+
+        const existingUserRows = await tx
+          .select({ id: users.id, role: users.role })
+          .from(users)
+          .where(and(eq(users.schoolId, admin.schoolId), eq(users.email, parentEmail)))
+          .limit(1);
+
+        let parentId = "";
+        if (existingUserRows[0]) {
+          if (existingUserRows[0].role !== "PARENT") {
+            throw new Error("Guardian email already belongs to a non-parent account");
+          }
+          parentId = existingUserRows[0].id;
+        } else {
+          parentId = crypto.randomUUID();
+          const generatedPassword = parentPassword || `Parent@${Math.floor(100000 + Math.random() * 900000)}`;
+          temporaryParentPassword = parentPassword ? null : generatedPassword;
+          const passwordHash = await bcrypt.hash(generatedPassword, 10);
+
+          await tx.insert(users).values({
+            id: parentId,
+            schoolId: admin.schoolId,
+            name: parentFullName || `Guardian of ${fullName}`,
+            email: parentEmail,
+            passwordHash,
+            role: "PARENT",
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        const existingLinkRows = await tx
+          .select({ id: parentWardLinks.id })
+          .from(parentWardLinks)
+          .where(
+            and(
+              eq(parentWardLinks.schoolId, admin.schoolId),
+              eq(parentWardLinks.parentId, parentId),
+              eq(parentWardLinks.studentId, studentId)
+            )
+          )
+          .limit(1);
+
+        if (!existingLinkRows[0]) {
+          const primaryRows = await tx
+            .select({ id: parentWardLinks.id })
+            .from(parentWardLinks)
+            .where(
+              and(
+                eq(parentWardLinks.schoolId, admin.schoolId),
+                eq(parentWardLinks.studentId, studentId),
+                eq(parentWardLinks.isPrimary, true)
+              )
+            )
+            .limit(1);
+
+          await tx.insert(parentWardLinks).values({
+            id: crypto.randomUUID(),
+            schoolId: admin.schoolId,
+            parentId,
+            studentId,
+            relationship: "GUARDIAN",
+            isPrimary: !primaryRows[0],
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+    });
 
     return NextResponse.json({
       message: "Student created successfully",
@@ -201,8 +318,7 @@ export async function POST(req: Request) {
         gender,
         dateOfBirth,
       },
-      warning:
-        "Guardian linking is pending D1 migration and was skipped for this student.",
+      temporaryParentPassword,
     });
   } catch (error: unknown) {
     console.error("Create student error:", error);

@@ -1,31 +1,39 @@
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { teacherClassAssignments } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
-function d1OnlyResponse() {
-  return NextResponse.json(
-    {
-      error: "This endpoint is temporarily unavailable while migrating fully to D1.",
-      code: "D1_MIGRATION_PENDING",
-    },
-    { status: 501 }
-  );
-}
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const token = req.headers.get("authorization")?.split(" ")[1];
+    const admin: ITokenPayload | null = verifyToken(token || "");
 
-export async function GET() {
-  return d1OnlyResponse();
-}
+    if (!admin || admin.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
 
-export async function POST() {
-  return d1OnlyResponse();
-}
+    const { id } = await context.params;
+    const teacherId = String(id || "").trim();
+    if (!teacherId) {
+      return NextResponse.json({ error: "Teacher ID is required" }, { status: 400 });
+    }
 
-export async function PUT() {
-  return d1OnlyResponse();
-}
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-export async function PATCH() {
-  return d1OnlyResponse();
-}
+    await d1
+      .delete(teacherClassAssignments)
+      .where(and(eq(teacherClassAssignments.schoolId, admin.schoolId), eq(teacherClassAssignments.teacherId, teacherId)));
 
-export async function DELETE() {
-  return d1OnlyResponse();
+    return NextResponse.json({ message: "Class teacher removed successfully" });
+  } catch (error: unknown) {
+    console.error("Remove class teacher error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to remove class teacher" },
+      { status: 500 }
+    );
+  }
 }

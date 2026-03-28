@@ -1,7 +1,7 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs, classes, users } from "@/app/db/schema";
+import { announcementReads, announcements, classes, enrollments, parentWardLinks, terms, users } from "@/app/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 type AnnouncementRecord = {
@@ -11,17 +11,8 @@ type AnnouncementRecord = {
   announcementType: "GENERAL" | "CLASS_SPECIFIC";
   targetAudience: "ALL" | "TEACHERS_ONLY" | "PARENTS_ONLY";
   classId?: string | null;
-  createdAt: number;
+  createdAt: Date;
 };
-
-function parseMeta(metaJson: string | null): Record<string, unknown> {
-  if (!metaJson) return {};
-  try {
-    return JSON.parse(metaJson) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
 
 function isVisibleToRole(
   record: AnnouncementRecord,
@@ -50,51 +41,80 @@ export async function GET(req: Request) {
 
     const rows = await d1
       .select({
-        id: auditLogs.id,
-        actorId: auditLogs.actorId,
-        metaJson: auditLogs.metaJson,
-        createdAt: auditLogs.createdAt,
+        id: announcements.id,
+        createdBy: announcements.createdBy,
+        title: announcements.title,
+        message: announcements.message,
+        announcementType: announcements.announcementType,
+        targetAudience: announcements.targetAudience,
+        classId: announcements.classId,
+        createdAt: announcements.createdDate,
       })
-      .from(auditLogs)
-      .where(and(eq(auditLogs.schoolId, user.schoolId), eq(auditLogs.action, "ANNOUNCEMENT_CREATED")))
-      .orderBy(desc(auditLogs.createdAt));
+      .from(announcements)
+      .where(eq(announcements.schoolId, user.schoolId))
+      .orderBy(desc(announcements.createdDate));
 
-    const announcementRows: Array<{
-      logId: string;
-      actorId: string | null;
-      createdAt: number;
-      record: AnnouncementRecord;
-    }> = [];
+    let parentVisibleClassIds = new Set<string>();
+    if (user.role === "PARENT") {
+      const currentTermRows = await d1
+        .select({ id: terms.id })
+        .from(terms)
+        .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+        .limit(1);
 
-    for (const row of rows) {
-      const meta = parseMeta(row.metaJson);
-      const title = String(meta.title || "").trim();
-      const message = String(meta.message || "").trim();
-      if (!title || !message) continue;
+      const currentTermId = currentTermRows[0]?.id;
+      if (currentTermId) {
+        const wardRows = await d1
+          .select({ studentId: parentWardLinks.studentId })
+          .from(parentWardLinks)
+          .where(and(eq(parentWardLinks.schoolId, user.schoolId), eq(parentWardLinks.parentId, user.userId)));
 
-      const record: AnnouncementRecord = {
-        id: String(meta.announcementId || row.id),
-        title,
-        message,
-        announcementType:
-          meta.announcementType === "CLASS_SPECIFIC" ? "CLASS_SPECIFIC" : "GENERAL",
-        targetAudience:
-          meta.targetAudience === "TEACHERS_ONLY" || meta.targetAudience === "PARENTS_ONLY"
-            ? meta.targetAudience
-            : "ALL",
-        classId: meta.classId ? String(meta.classId) : null,
-        createdAt: row.createdAt.getTime(),
-      };
-
-      if (!isVisibleToRole(record, user.role)) continue;
-
-      announcementRows.push({
-        logId: row.id,
-        actorId: row.actorId,
-        createdAt: row.createdAt.getTime(),
-        record,
-      });
+        const wardIds = wardRows.map((row) => row.studentId);
+        if (wardIds.length > 0) {
+          const enrollmentRows = await d1
+            .select({ classId: enrollments.classId })
+            .from(enrollments)
+            .where(
+              and(
+                eq(enrollments.schoolId, user.schoolId),
+                eq(enrollments.termId, currentTermId),
+                inArray(enrollments.studentId, wardIds)
+              )
+            );
+          parentVisibleClassIds = new Set(enrollmentRows.map((row) => row.classId));
+        }
+      }
     }
+
+    const announcementRows = rows
+      .map((row) => {
+        const record: AnnouncementRecord = {
+          id: row.id,
+          title: row.title,
+          message: row.message,
+          announcementType: row.announcementType === "CLASS_SPECIFIC" ? "CLASS_SPECIFIC" : "GENERAL",
+          targetAudience:
+            row.targetAudience === "TEACHERS_ONLY" || row.targetAudience === "PARENTS_ONLY"
+              ? row.targetAudience
+              : "ALL",
+          classId: row.classId,
+          createdAt: row.createdAt,
+        };
+
+        return {
+          id: row.id,
+          actorId: row.createdBy,
+          record,
+        };
+      })
+      .filter((row) => {
+        if (!isVisibleToRole(row.record, user.role)) return false;
+        if (user.role === "PARENT" && row.record.announcementType === "CLASS_SPECIFIC") {
+          if (!row.record.classId) return false;
+          return parentVisibleClassIds.has(row.record.classId);
+        }
+        return true;
+      });
 
     const actorIds = [...new Set(announcementRows.map((row) => row.actorId).filter(Boolean) as string[])];
     const classIds = [...new Set(announcementRows.map((row) => row.record.classId).filter(Boolean) as string[])];
@@ -117,6 +137,12 @@ export async function GET(req: Request) {
     const authorMap = new Map(authorRows.map((row) => [row.id, row]));
     const classMap = new Map(classRows.map((row) => [row.id, row.name]));
 
+    const readRows = await d1
+      .select({ announcementId: announcementReads.announcementId, readAt: announcementReads.readAt })
+      .from(announcementReads)
+      .where(and(eq(announcementReads.schoolId, user.schoolId), eq(announcementReads.readerId, user.userId)));
+    const readMap = new Map(readRows.map((row) => [row.announcementId, row.readAt]));
+
     return NextResponse.json({
       announcements: announcementRows.map((row) => {
         const author = row.actorId ? authorMap.get(row.actorId) : null;
@@ -130,7 +156,8 @@ export async function GET(req: Request) {
           targetAudience: row.record.targetAudience,
           classId: row.record.classId || null,
           className,
-          createdAt: row.createdAt,
+          createdAt: row.record.createdAt,
+          readAt: readMap.get(row.record.id) || null,
           postedBy: {
             id: author?.id || row.actorId || "system",
             name: author?.name || "System",
@@ -138,7 +165,7 @@ export async function GET(req: Request) {
           },
         };
       }),
-      storageMode: "audit-log-transitional",
+      storageMode: "announcements-table",
     });
   } catch (error: unknown) {
     console.error("Fetch announcements error:", error);

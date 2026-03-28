@@ -1,17 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs } from "@/app/db/schema";
+import { announcementReads, announcements } from "@/app/db/schema";
 import { and, eq } from "drizzle-orm";
-
-function parseMeta(metaJson: string | null): Record<string, unknown> {
-  if (!metaJson) return {};
-  try {
-    return JSON.parse(metaJson) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -33,30 +24,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "announcementId is required" }, { status: 400 });
     }
 
-    const existingReads = await d1
-      .select({ metaJson: auditLogs.metaJson })
-      .from(auditLogs)
+    const targetAnnouncement = await d1
+      .select({ id: announcements.id })
+      .from(announcements)
       .where(
         and(
-          eq(auditLogs.schoolId, user.schoolId),
-          eq(auditLogs.action, "ANNOUNCEMENT_READ"),
-          eq(auditLogs.actorId, user.userId)
+          eq(announcements.schoolId, user.schoolId),
+          eq(announcements.id, announcementId)
         )
-      );
+      )
+      .limit(1);
 
-    const alreadyRead = existingReads.some((row) => {
-      const meta = parseMeta(row.metaJson);
-      return String(meta.announcementId || "") === announcementId;
-    });
+    if (!targetAnnouncement[0]) {
+      return NextResponse.json({ error: "Announcement not found" }, { status: 404 });
+    }
 
-    if (!alreadyRead) {
-      const now = new Date();
-      await d1.insert(auditLogs).values({
+    const existingReads = await d1
+      .select({ id: announcementReads.id })
+      .from(announcementReads)
+      .where(
+        and(
+          eq(announcementReads.schoolId, user.schoolId),
+          eq(announcementReads.announcementId, announcementId),
+          eq(announcementReads.readerId, user.userId)
+        )
+      )
+      .limit(1);
+
+    const now = new Date();
+    if (existingReads[0]) {
+      await d1
+        .update(announcementReads)
+        .set({ readAt: now, updatedAt: now })
+        .where(eq(announcementReads.id, existingReads[0].id));
+    } else {
+      await d1.insert(announcementReads).values({
         id: crypto.randomUUID(),
         schoolId: user.schoolId,
-        actorId: user.userId,
-        action: "ANNOUNCEMENT_READ",
-        metaJson: JSON.stringify({ announcementId }),
+        announcementId,
+        readerId: user.userId,
+        readAt: now,
         createdAt: now,
         updatedAt: now,
       });
@@ -65,7 +72,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       message: "Announcement marked as read",
       announcementId,
-      storageMode: "audit-log-transitional",
+      storageMode: "announcement-reads-table",
     });
   } catch (error: unknown) {
     console.error("Mark announcement read error:", error);

@@ -2,6 +2,7 @@ import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
 import { users } from "@/app/db/schema";
+import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
 import { and, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
@@ -27,18 +28,28 @@ export async function GET(req: Request) {
       .from(users)
       .where(and(eq(users.schoolId, user.schoolId), eq(users.role, "TEACHER")));
 
-    return NextResponse.json({
-      teachers: rows.map((row) => ({
-        _id: row.id,
-        id: row.id,
-        fullName: row.fullName,
-        email: row.email,
-        profile: {
-          classTeacherOf: null,
-          subjectsAndClasses: [],
-        },
-      })),
-    });
+    const teachers = await Promise.all(
+      rows.map(async (row) => {
+        const profile = await getTeacherProfileData(d1, user.schoolId, row.id);
+        return {
+          _id: row.id,
+          id: row.id,
+          fullName: row.fullName,
+          email: row.email,
+          profile: profile
+            ? {
+                classTeacherOf: profile.classTeacherOf,
+                subjectsAndClasses: profile.subjectsAndClasses,
+              }
+            : {
+                classTeacherOf: null,
+                subjectsAndClasses: [],
+              },
+        };
+      })
+    );
+
+    return NextResponse.json({ teachers });
   } catch (error: unknown) {
     console.error("Fetch teachers error:", error);
     return NextResponse.json(

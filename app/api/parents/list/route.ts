@@ -1,8 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import { parentWardLinks, users } from "@/app/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
@@ -27,14 +27,26 @@ export async function GET(req: Request) {
       .from(users)
       .where(and(eq(users.schoolId, admin.schoolId), eq(users.role, "PARENT")));
 
+    const parentIds = parents.map((parent) => parent.id);
+    const wardCounts = parentIds.length
+      ? await d1
+          .select({ parentId: parentWardLinks.parentId, studentId: parentWardLinks.studentId })
+          .from(parentWardLinks)
+          .where(and(eq(parentWardLinks.schoolId, admin.schoolId), inArray(parentWardLinks.parentId, parentIds)))
+      : [];
+
+    const wardCountMap = new Map<string, number>();
+    for (const row of wardCounts) {
+      wardCountMap.set(row.parentId, (wardCountMap.get(row.parentId) || 0) + 1);
+    }
+
     return NextResponse.json({
       parents: parents.map((parent) => ({
         id: parent.id,
         fullName: parent.fullName,
         email: parent.email,
-        wardCount: 0,
+        wardCount: wardCountMap.get(parent.id) || 0,
       })),
-      warning: "Parent-ward linking is pending D1 migration.",
     });
   } catch (error: unknown) {
     console.error("Fetch parents error:", error);

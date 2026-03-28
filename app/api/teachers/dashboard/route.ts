@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { classes } from "@/app/db/schema";
-import { eq } from "drizzle-orm";
+import { classes, enrollments, terms } from "@/app/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
 
 function splitLevelAndArm(className: string, fallbackLevel: string) {
   const normalized = String(className || "").trim();
@@ -31,34 +32,96 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    const classRows = await d1
-      .select({ id: classes.id, name: classes.name, level: classes.level })
-      .from(classes)
-      .where(eq(classes.schoolId, teacher.schoolId));
+    const profile = await getTeacherProfileData(d1, teacher.schoolId, teacher.userId);
+    if (!profile) {
+      return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
+    }
 
-    const classesPayload = classRows.map((row) => {
-      const parsed = splitLevelAndArm(row.name, row.level);
-      return {
-        _id: row.id,
-        name: row.name,
-        level: parsed.level,
-        arm: parsed.arm,
-      };
-    });
+    const taughtClassIds = new Set<string>();
+    if (profile.classTeacherOf?._id) {
+      taughtClassIds.add(profile.classTeacherOf._id);
+    }
+    for (const item of profile.subjectsAndClasses) {
+      for (const cls of item.classIds) {
+        if (cls?._id) {
+          taughtClassIds.add(cls._id);
+        }
+      }
+    }
+
+    const classIds = [...taughtClassIds];
+    const currentTermRows = await d1
+      .select({ id: terms.id })
+      .from(terms)
+      .where(and(eq(terms.schoolId, teacher.schoolId), eq(terms.isCurrent, true)))
+      .limit(1);
+
+    const currentTermId = currentTermRows[0]?.id || null;
+    const studentCountRows = currentTermId && classIds.length
+      ? await d1
+          .select({ classId: enrollments.classId, studentId: enrollments.studentId })
+          .from(enrollments)
+          .where(
+            and(
+              eq(enrollments.schoolId, teacher.schoolId),
+              eq(enrollments.termId, currentTermId),
+              inArray(enrollments.classId, classIds)
+            )
+          )
+      : [];
+
+    const studentIds = new Set<string>();
+    for (const row of studentCountRows) {
+      if (classIds.includes(row.classId)) {
+        studentIds.add(row.studentId);
+      }
+    }
+
+    const classTeacherStudentCount = profile.classTeacherOf?._id
+      ? new Set(
+          studentCountRows
+            .filter((row) => row.classId === profile.classTeacherOf?._id)
+            .map((row) => row.studentId)
+        ).size
+      : 0;
+
+    const classesPayload = classIds.length
+      ? await d1
+          .select({ id: classes.id, name: classes.name, level: classes.level })
+          .from(classes)
+          .where(and(eq(classes.schoolId, teacher.schoolId), inArray(classes.id, classIds)))
+          .then((rows) =>
+            rows.map((row) => {
+              const parsed = splitLevelAndArm(row.name, row.level);
+              return {
+                _id: row.id,
+                name: row.name,
+                level: parsed.level,
+                arm: parsed.arm,
+              };
+            })
+          )
+      : [];
 
     return NextResponse.json({
       stats: {
-        myClasses: classesPayload.length,
-        myStudents: 0,
+        myClasses: classIds.length,
+        myStudents: studentIds.size,
         scoresUploaded: 0,
       },
       assignments: {
-        classTeacherOf: null,
-        subjectsAndClasses: [],
+        classTeacherOf: profile.classTeacherOf
+          ? {
+              ...profile.classTeacherOf,
+              studentCount: classTeacherStudentCount,
+            }
+          : null,
+        subjectsAndClasses: profile.subjectsAndClasses.map((entry) => ({
+          subject: entry.subjectId,
+          classes: entry.classIds,
+        })),
       },
       classes: classesPayload,
-      warning:
-        "Teacher-specific class/subject mappings and score totals are pending D1 migration.",
     });
   } catch (error: unknown) {
     console.error("Teacher dashboard error:", error);

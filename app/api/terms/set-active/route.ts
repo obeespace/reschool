@@ -43,6 +43,9 @@ export async function POST(req: Request) {
     invalidateServerCacheByPrefix(`terms:list:${admin.schoolId}:`);
     invalidateServerCacheByPrefix(`academic-years:list:${admin.schoolId}`);
     invalidateServerCacheByPrefix(`admin:stats:${admin.schoolId}`);
+    invalidateServerCacheByPrefix(`reports:list:${admin.schoolId}:`);
+    invalidateServerCacheByPrefix(`parents:dashboard:${admin.schoolId}:`);
+    invalidateServerCacheByPrefix(`parents:class-ranking:${admin.schoolId}:`);
 
     return NextResponse.json({ message: "Term activated successfully", termId });
   } catch (error: unknown) {

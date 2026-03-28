@@ -1,7 +1,7 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs, classes } from "@/app/db/schema";
+import { announcements, classes } from "@/app/db/schema";
 import { and, eq } from "drizzle-orm";
 
 export async function POST(req: Request) {
@@ -43,19 +43,16 @@ export async function POST(req: Request) {
     const now = new Date();
     const announcementId = crypto.randomUUID();
 
-    await d1.insert(auditLogs).values({
-      id: crypto.randomUUID(),
+    await d1.insert(announcements).values({
+      id: announcementId,
       schoolId: teacher.schoolId,
-      actorId: teacher.userId,
-      action: "ANNOUNCEMENT_CREATED",
-      metaJson: JSON.stringify({
-        announcementId,
-        classId,
-        title,
-        message,
-        announcementType: "CLASS_SPECIFIC",
-        targetAudience: "PARENTS_ONLY",
-      }),
+      createdBy: teacher.userId,
+      announcementType: "CLASS_SPECIFIC",
+      targetAudience: "PARENTS_ONLY",
+      classId,
+      title,
+      message,
+      createdDate: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -63,7 +60,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       message: "Class announcement created successfully",
       announcementId,
-      storageMode: "audit-log-transitional",
+      storageMode: "announcements-table",
     });
   } catch (error: unknown) {
     console.error("Create class announcement error:", error);

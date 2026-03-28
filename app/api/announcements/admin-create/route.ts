@@ -1,7 +1,7 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs } from "@/app/db/schema";
+import { announcements } from "@/app/db/schema";
 
 export async function POST(req: Request) {
   try {
@@ -32,18 +32,16 @@ export async function POST(req: Request) {
     const now = new Date();
     const announcementId = crypto.randomUUID();
 
-    await d1.insert(auditLogs).values({
-      id: crypto.randomUUID(),
+    await d1.insert(announcements).values({
+      id: announcementId,
       schoolId: admin.schoolId,
-      actorId: admin.userId,
-      action: "ANNOUNCEMENT_CREATED",
-      metaJson: JSON.stringify({
-        announcementId,
-        title,
-        message,
-        announcementType: "GENERAL",
-        targetAudience,
-      }),
+      createdBy: admin.userId,
+      announcementType: "GENERAL",
+      targetAudience,
+      classId: null,
+      title,
+      message,
+      createdDate: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -51,7 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       message: "Announcement created successfully",
       announcementId,
-      storageMode: "audit-log-transitional",
+      storageMode: "announcements-table",
     });
   } catch (error: unknown) {
     console.error("Create admin announcement error:", error);

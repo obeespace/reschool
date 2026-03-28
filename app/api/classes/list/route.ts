@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
 import { classes } from "@/app/db/schema";
 import { eq } from "drizzle-orm";
+import { getClassSubjectIds } from "@/app/utils/schoolRelationships";
 
 function splitLevelAndArm(className: string, fallbackLevel: string) {
   const normalized = String(className || "").trim();
@@ -39,6 +40,9 @@ export async function GET(req: Request) {
       .from(classes)
       .where(eq(classes.schoolId, user.schoolId));
 
+    const classIds = rows.map((row) => row.id);
+    const classSubjectsMap = await getClassSubjectIds(d1, user.schoolId, classIds);
+
     const payload = rows.map((row) => {
       const parsed = splitLevelAndArm(row.name, row.level);
       return {
@@ -47,7 +51,7 @@ export async function GET(req: Request) {
         name: row.name,
         level: parsed.level,
         arm: parsed.arm,
-        subjectIds: [],
+        subjectIds: classSubjectsMap.get(row.id) || [],
       };
     });
 

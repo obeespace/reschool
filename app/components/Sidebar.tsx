@@ -28,12 +28,22 @@ export interface SidebarProps {
   children: ReactNode;
 }
 
+type AnnouncementPreview = {
+  id: string;
+  title?: string;
+  message?: string;
+  createdDate?: string;
+  isNew?: boolean;
+  timeAgo?: string;
+  postedBy?: { name?: string } | null;
+};
+
 function DashboardLayout({ role, children }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [recentAnnouncements, setRecentAnnouncements] = useState<any[]>([]);
+  const [recentAnnouncements, setRecentAnnouncements] = useState<AnnouncementPreview[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -52,9 +62,14 @@ function DashboardLayout({ role, children }: SidebarProps) {
       { name: "Subjects", path: "/admin/subjects", icon: BookOpen },
       { name: "Classes", path: "/admin/classes", icon: School },
       { name: "Teachers", path: "/admin/teachers", icon: Users },
+      { name: "Rewards", path: "/admin/rewards", icon: BarChart3 },
       { name: "Students", path: "/admin/students", icon: GraduationCap },
       { name: "Parents", path: "/admin/parents", icon: UsersRound },
+      { name: "Attendance", path: "/admin/attendance", icon: ClipboardList },
+      { name: "Certificates", path: "/admin/certificates", icon: GraduationCap },
       { name: "Reports", path: "/admin/reports", icon: BarChart3 },
+      { name: "Notifications", path: "/admin/notifications", icon: Bell },
+      { name: "Setup", path: "/admin/setup", icon: Calendar },
       { name: "My Profile", path: "/admin/profile", icon: User },
     ];
 
@@ -64,6 +79,10 @@ function DashboardLayout({ role, children }: SidebarProps) {
       { name: "My Classes", path: "/teacher/classes", icon: School },
       { name: "Students", path: "/teacher/students", icon: GraduationCap },
       { name: "Scores", path: "/teacher/scores", icon: ClipboardList },
+      { name: "Attendance", path: "/teacher/attendance", icon: Users },
+      { name: "My Rank", path: "/teacher/rewards", icon: BarChart3 },
+      { name: "Reports", path: "/teacher/reports", icon: BarChart3 },
+      { name: "Notifications", path: "/teacher/notifications", icon: Bell },
       { name: "My Profile", path: "/teacher/profile", icon: User },
     ];
 
@@ -72,25 +91,13 @@ function DashboardLayout({ role, children }: SidebarProps) {
       { name: "Announcements", path: "/parent/announcements", icon: Megaphone },
       { name: "My Wards", path: "/parent/wards", icon: UsersRound },
       { name: "Scores", path: "/parent/scores", icon: BarChart3 },
+      { name: "Reports", path: "/parent/reports", icon: ClipboardList },
+      { name: "Notifications", path: "/parent/notifications", icon: Bell },
       { name: "My Profile", path: "/parent/profile", icon: User },
     ];
 
     return role === "ADMIN" ? adminLinks : role === "TEACHER" ? teacherLinks : parentLinks;
   }, [role]);
-
-  useEffect(() => {
-    // Defer non-critical features to improve initial load
-    const timer = setTimeout(() => {
-      fetchUnreadCount();
-    }, 1000); // Increased delay to prioritize page load
-    
-    // Refresh count every 2 minutes instead of 1
-    const interval = setInterval(fetchUnreadCount, 120000);
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
-  }, []);
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -110,6 +117,20 @@ function DashboardLayout({ role, children }: SidebarProps) {
       console.log("Unread count unavailable:", error);
     }
   }, []);
+
+  useEffect(() => {
+    // Defer non-critical features to improve initial load
+    const timer = setTimeout(() => {
+      fetchUnreadCount();
+    }, 1000); // Increased delay to prioritize page load
+
+    // Refresh count every 2 minutes instead of 1
+    const interval = setInterval(fetchUnreadCount, 120000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [fetchUnreadCount]);
 
   const markAsRead = useCallback(async (announcementId: string) => {
     try {

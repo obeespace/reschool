@@ -2,8 +2,9 @@ import bcrypt from "bcryptjs";
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
 import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
+import { classes, teacherClassAssignments, teacherSubjectAssignments, users } from "@/app/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
 
 export async function GET(req: Request) {
   try {
@@ -19,25 +20,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    const rows = await d1
-      .select({ id: users.id, name: users.name, email: users.email })
-      .from(users)
-      .where(and(eq(users.id, teacher.userId), eq(users.schoolId, teacher.schoolId)))
-      .limit(1);
-
-    if (!rows[0]) {
+    const profile = await getTeacherProfileData(d1, teacher.schoolId, teacher.userId);
+    if (!profile) {
       return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
     }
 
     return NextResponse.json({
-      profile: {
-        _id: rows[0].id,
-        fullName: rows[0].name,
-        email: rows[0].email,
-        classTeacherOf: null,
-        subjectsAndClasses: [],
-      },
-      warning: "Teacher assignment data is pending D1 migration.",
+      profile,
     });
   } catch (error: unknown) {
     console.error("Fetch teacher profile error:", error);
@@ -66,6 +55,8 @@ export async function POST(req: Request) {
     const fullName = String(body?.fullName || "").trim();
     const email = String(body?.email || "").trim().toLowerCase();
     const password = String(body?.password || "");
+    const classTeacherOf = body?.classTeacherOf ? String(body.classTeacherOf).trim() : "";
+    const subjectsAndClasses = Array.isArray(body?.subjectsAndClasses) ? body.subjectsAndClasses : [];
 
     if (!fullName || !email || password.length < 6) {
       return NextResponse.json(
@@ -91,16 +82,63 @@ export async function POST(req: Request) {
     const teacherId = crypto.randomUUID();
     const passwordHash = await bcrypt.hash(password, 10);
 
-    await d1.insert(users).values({
-      id: teacherId,
-      schoolId: admin.schoolId,
-      name: fullName,
-      email,
-      passwordHash,
-      role: "TEACHER",
-      createdAt: now,
-      updatedAt: now,
+    await d1.transaction(async (tx) => {
+      await tx.insert(users).values({
+        id: teacherId,
+        schoolId: admin.schoolId,
+        name: fullName,
+        email,
+        passwordHash,
+        role: "TEACHER",
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      if (classTeacherOf) {
+        const classExists = await tx
+          .select({ id: classes.id })
+          .from(classes)
+          .where(and(eq(classes.schoolId, admin.schoolId), eq(classes.id, classTeacherOf)))
+          .limit(1);
+
+        if (classExists[0]) {
+          await tx
+            .delete(teacherClassAssignments)
+            .where(and(eq(teacherClassAssignments.schoolId, admin.schoolId), eq(teacherClassAssignments.classId, classTeacherOf)));
+
+          await tx.insert(teacherClassAssignments).values({
+            id: crypto.randomUUID(),
+            schoolId: admin.schoolId,
+            teacherId,
+            classId: classTeacherOf,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+
+      for (const assignment of subjectsAndClasses) {
+        const subjectId = String(assignment?.subjectId || "").trim();
+        const classIds = Array.isArray(assignment?.classIds) ? assignment.classIds : [];
+        if (!subjectId) continue;
+
+        for (const rawClassId of classIds) {
+          const classId = String(rawClassId || "").trim();
+          if (!classId) continue;
+          await tx.insert(teacherSubjectAssignments).values({
+            id: crypto.randomUUID(),
+            schoolId: admin.schoolId,
+            teacherId,
+            subjectId,
+            classId,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
     });
+
+    const profile = await getTeacherProfileData(d1, admin.schoolId, teacherId);
 
     return NextResponse.json({
       message: "Teacher created successfully",
@@ -109,12 +147,16 @@ export async function POST(req: Request) {
         id: teacherId,
         fullName,
         email,
-        profile: {
-          classTeacherOf: null,
-          subjectsAndClasses: [],
-        },
+        profile: profile
+          ? {
+              classTeacherOf: profile.classTeacherOf,
+              subjectsAndClasses: profile.subjectsAndClasses,
+            }
+          : {
+              classTeacherOf: null,
+              subjectsAndClasses: [],
+            },
       },
-      warning: "Class-teacher and subject assignments are pending D1 migration.",
     });
   } catch (error: unknown) {
     console.error("Create teacher error:", error);

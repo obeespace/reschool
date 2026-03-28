@@ -52,6 +52,9 @@ export async function POST(req: Request) {
     invalidateServerCacheByPrefix(`academic-years:list:${admin.schoolId}`);
     invalidateServerCacheByPrefix(`terms:list:${admin.schoolId}:`);
     invalidateServerCacheByPrefix(`admin:stats:${admin.schoolId}`);
+    invalidateServerCacheByPrefix(`reports:list:${admin.schoolId}:`);
+    invalidateServerCacheByPrefix(`parents:dashboard:${admin.schoolId}:`);
+    invalidateServerCacheByPrefix(`parents:class-ranking:${admin.schoolId}:`);
 
     return NextResponse.json({
       message: "Active academic year updated",
