@@ -1,72 +1,58 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Announcement from "@/app/models/Announcements";
+import TeacherActivity from "@/app/models/TeacherActivity";
+import Class from "@/app/models/Class";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { announcements, classes } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
 
 export async function POST(req: Request) {
-  try {
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const teacher: ITokenPayload | null = verifyToken(token || "");
+  await connectDB();
+  const token = req.headers.get("authorization")?.split(" ")[1];
+  const teacher: any = verifyToken(token || "");
 
-    if (!teacher || teacher.role !== "TEACHER") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const body = await req.json();
-    const classId = String(body?.classId || "").trim();
-    const title = String(body?.title || "").trim();
-    const message = String(body?.message || "").trim();
-
-    if (!classId || !title || !message) {
-      return NextResponse.json(
-        { error: "classId, title, and message are required" },
-        { status: 400 }
-      );
-    }
-
-    const classExists = await d1
-      .select({ id: classes.id })
-      .from(classes)
-      .where(and(eq(classes.id, classId), eq(classes.schoolId, teacher.schoolId)))
-      .limit(1);
-
-    if (!classExists[0]) {
-      return NextResponse.json({ error: "Class not found" }, { status: 404 });
-    }
-
-    const now = new Date();
-    const announcementId = crypto.randomUUID();
-
-    await d1.insert(announcements).values({
-      id: announcementId,
-      schoolId: teacher.schoolId,
-      createdBy: teacher.userId,
-      announcementType: "CLASS_SPECIFIC",
-      targetAudience: "PARENTS_ONLY",
-      classId,
-      title,
-      message,
-      createdDate: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return NextResponse.json({
-      message: "Class announcement created successfully",
-      announcementId,
-      storageMode: "announcements-table",
-    });
-  } catch (error: unknown) {
-    console.error("Create class announcement error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create announcement" },
-      { status: 500 }
-    );
+  if (!teacher || teacher.role !== "TEACHER") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
+
+  const { classId, title, message } = await req.json();
+
+  // Verify the class exists and teacher has access to it
+  const classDoc = await Class.findOne({ 
+    _id: classId, 
+    schoolId: teacher.schoolId,
+    classTeacherId: teacher.userId
+  });
+
+  if (!classDoc) {
+    return NextResponse.json({ 
+      error: "Class not found or you don't have permission to post to this class" 
+    }, { status: 404 });
+  }
+
+  const announcement = await Announcement.create({
+    schoolId: teacher.schoolId,
+    classId,
+    title,
+    message,
+    postedBy: teacher.userId,
+    announcementType: "CLASS_SPECIFIC",
+    targetAudience: "PARENTS_ONLY" // Class announcements are only for parents
+  });
+
+  await TeacherActivity.create({
+    schoolId: teacher.schoolId,
+    teacherId: teacher.userId,
+    action: "POST_ANNOUNCEMENT"
+  });
+
+  return NextResponse.json({ 
+    success: true,
+    announcementId: announcement._id,
+    announcement: {
+      title: announcement.title,
+      message: announcement.message,
+      className: classDoc.name,
+      createdAt: announcement.createdAt
+    }
+  });
 }

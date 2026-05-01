@@ -1,38 +1,51 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import Class from "@/app/models/Class";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { teacherClassAssignments } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
 
-export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: ITokenPayload | null = verifyToken(token || "");
+    const admin = verifyToken(token || "");
 
     if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { id } = await context.params;
-    const teacherId = String(id || "").trim();
-    if (!teacherId) {
-      return NextResponse.json({ error: "Teacher ID is required" }, { status: 400 });
+    const { id: teacherId } = await params;
+
+    // Get teacher profile to find the class
+    const teacherProfile = await TeacherProfile.findOne({
+      userId: teacherId,
+      schoolId: admin.schoolId
+    });
+
+    if (teacherProfile?.classTeacherOf) {
+      // Remove teacher from class
+      await Class.findByIdAndUpdate(teacherProfile.classTeacherOf, { 
+        $unset: { classTeacherId: 1 } 
+      });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    // Remove class teacher assignment
+    await TeacherProfile.findOneAndUpdate(
+      { userId: teacherId, schoolId: admin.schoolId },
+      { $unset: { classTeacherOf: 1 } }
+    );
 
-    await d1
-      .delete(teacherClassAssignments)
-      .where(and(eq(teacherClassAssignments.schoolId, admin.schoolId), eq(teacherClassAssignments.teacherId, teacherId)));
-
-    return NextResponse.json({ message: "Class teacher removed successfully" });
-  } catch (error: unknown) {
+    return NextResponse.json({ 
+      success: true,
+      message: "Class teacher removed successfully" 
+    });
+  } catch (error: any) {
     console.error("Remove class teacher error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to remove class teacher" },
+      { error: error.message || "Failed to remove class teacher" },
       { status: 500 }
     );
   }

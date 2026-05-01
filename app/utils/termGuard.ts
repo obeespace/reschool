@@ -1,33 +1,25 @@
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
 
 /**
  * Checks if the current term is paid for and active
  * Returns term data if valid, throws error otherwise
  */
 export async function checkTermAccess(schoolId: string, termId?: string) {
-  const d1 = getOptionalD1Client();
-  if (!d1) {
-    throw new Error("D1 database not configured");
-  }
+  await connectDB();
 
   // If termId provided, check that specific term. Otherwise check active term.
   let term;
   if (termId) {
-    const rows = await d1
-      .select()
-      .from(terms)
-      .where(and(eq(terms.id, termId), eq(terms.schoolId, schoolId)))
-      .limit(1);
-    term = rows[0] || null;
+    term = await Term.findOne({
+      _id: termId,
+      schoolId
+    });
   } else {
-    const rows = await d1
-      .select()
-      .from(terms)
-      .where(and(eq(terms.schoolId, schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
-    term = rows[0] || null;
+    term = await Term.findOne({
+      schoolId,
+      isActive: true
+    });
   }
 
   if (!term) {
@@ -56,11 +48,8 @@ export async function checkSpecificTermAccess(schoolId: string, termId: string) 
  * Gets all paid terms for a school (for historical data access)
  */
 export async function getPaidTerms(schoolId: string) {
-  const d1 = getOptionalD1Client();
-  if (!d1) {
-    throw new Error("D1 database not configured");
-  }
-  return await d1.select().from(terms).where(and(eq(terms.schoolId, schoolId), eq(terms.isPaid, true)));
+  await connectDB();
+  return await Term.find({ schoolId, isPaid: true });
 }
 
 /**
@@ -70,7 +59,7 @@ export async function canPerformOperations(schoolId: string) {
   try {
     await checkTermAccess(schoolId);
     return true;
-  } catch {
+  } catch (error) {
     return false;
   }
 }

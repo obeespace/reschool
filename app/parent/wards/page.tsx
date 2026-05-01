@@ -34,7 +34,7 @@ export default function ParentWardsPage() {
     }
 
     fetchWards();
-  }, [router]);
+  }, []);
 
   const fetchWards = async () => {
     try {
@@ -145,11 +145,11 @@ export default function ParentWardsPage() {
                     View Scores
                   </Button>
                   <Button
-                    onClick={() => router.push(`/parent/wards/${ward.id}`)}
+                    onClick={() => router.push(`/parent/scores?student=${ward.id}`)}
                     variant="secondary"
                     className="flex-1"
                   >
-                    Academic Record
+                    Performance
                   </Button>
                 </div>
               </div>
@@ -188,7 +188,7 @@ export default function ParentWardsPage() {
       <div className="mt-6 bg-blue-50 rounded-lg p-6">
         <h3 className="font-semibold text-blue-900 mb-3">Parental Tips</h3>
         <ul className="text-sm text-blue-800 space-y-2">
-          <li>• Review your ward&apos;s performance regularly</li>
+          <li>• Review your ward's performance regularly</li>
           <li>• Encourage strong performance in weak subjects</li>
           <li>• Communicate with class teachers when needed</li>
           <li>• Celebrate academic achievements</li>

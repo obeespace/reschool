@@ -1,40 +1,80 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import Class from "@/app/models/Class";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { students } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
 
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDB();
+    const { id } = await params;
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
+    const user: any = verifyToken(token || "");
 
-    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { id } = await params;
-    if (!id) {
-      return NextResponse.json({ error: "Student id is required" }, { status: 400 });
+    const student = await Student.findOne({
+      _id: id,
+      schoolId: user.schoolId
+    });
+
+    if (!student) {
+      return NextResponse.json(
+        { error: "Student not found" },
+        { status: 404 }
+      );
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    // Check permissions
+    if (user.role === "TEACHER") {
+      const teacherProfile = await TeacherProfile.findOne({ userId: user.userId });
+      
+      if (!teacherProfile) {
+        return NextResponse.json(
+          { error: "Teacher profile not found" },
+          { status: 404 }
+        );
+      }
+
+      // Check if teacher is the class teacher of this student's class
+      if (!teacherProfile.classTeacherOf || 
+          teacherProfile.classTeacherOf.toString() !== student.currentClassId?.toString()) {
+        return NextResponse.json(
+          { error: "You can only delete students in your class" },
+          { status: 403 }
+        );
+      }
+    } else if (user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 403 }
+      );
     }
 
-    await d1
-      .delete(students)
-      .where(and(eq(students.id, id), eq(students.schoolId, user.schoolId)));
+    // Remove student from class
+    if (student.currentClassId) {
+      await Class.findByIdAndUpdate(student.currentClassId, {
+        $pull: { studentIds: student._id }
+      });
+    }
 
-    return NextResponse.json({ message: "Student deleted successfully" });
-  } catch (error: unknown) {
-    console.error("Delete student error:", error);
+    // Delete the student
+    await Student.findByIdAndDelete(id);
+
+    return NextResponse.json({
+      message: "Student deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error deleting student:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete student" },
+      { error: "Failed to delete student" },
       { status: 500 }
     );
   }

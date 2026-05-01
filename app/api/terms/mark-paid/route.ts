@@ -1,59 +1,56 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: ITokenPayload | null = verifyToken(token || "");
+    const admin: any = verifyToken(token || "");
 
     if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const { termId, paymentReference } = await req.json();
+
     if (!termId) {
-      return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Term ID is required" },
+        { status: 400 }
+      );
     }
 
-    const now = new Date();
-    const updated = await d1
-      .update(terms)
-      .set({ isPaid: true, paymentDate: now, paymentReference: paymentReference || null, updatedAt: now })
-      .where(and(eq(terms.id, termId), eq(terms.schoolId, admin.schoolId)))
-      .returning({ id: terms.id, termNumber: terms.termNumber, isPaid: terms.isPaid, paymentDate: terms.paymentDate });
+    const term = await Term.findById(termId);
 
-    if (!updated.length) {
-      return NextResponse.json({ error: "Term not found" }, { status: 404 });
+    if (!term || term.schoolId.toString() !== admin.schoolId) {
+      return NextResponse.json(
+        { error: "Term not found" },
+        { status: 404 }
+      );
     }
 
-    invalidateServerCacheByPrefix(`terms:list:${admin.schoolId}:`);
-    invalidateServerCacheByPrefix(`admin:stats:${admin.schoolId}`);
-    invalidateServerCacheByPrefix(`reports:list:${admin.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:dashboard:${admin.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:class-ranking:${admin.schoolId}:`);
+    term.isPaid = true;
+    term.paymentDate = new Date();
+    if (paymentReference) {
+      term.paymentReference = paymentReference;
+    }
+    await term.save();
 
     return NextResponse.json({
       message: "Term marked as paid successfully",
       term: {
-        termId: updated[0].id,
-        termNumber: updated[0].termNumber,
-        isPaid: updated[0].isPaid,
-        paymentDate: updated[0].paymentDate,
-      },
+        termId: term._id.toString(),
+        termNumber: term.termNumber,
+        isPaid: term.isPaid,
+        paymentDate: term.paymentDate
+      }
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error("Mark term paid error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to mark term as paid" },
+      { error: error.message || "Failed to mark term as paid" },
       { status: 500 }
     );
   }

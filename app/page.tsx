@@ -50,22 +50,16 @@ export default function Home() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            schoolName: formData.schoolName,
-            adminName: formData.adminName,
+            name: formData.schoolName,
             email: formData.adminEmail,
             password: formData.adminPassword,
           }),
         });
 
         if (response.ok) {
-          const data = await response.json();
-          if (data?.token && data?.user) {
-            localStorage.setItem("token", data.token);
-            localStorage.setItem("user", JSON.stringify(data.user));
-          }
           toast.success("Payment successful! Your school account has been created.");
           setTimeout(() => {
-            router.push("/admin/dashboard");
+            router.push("/login");
           }, 1500);
         } else {
           const error = await response.json();

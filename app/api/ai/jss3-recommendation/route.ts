@@ -1,187 +1,206 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Score from "@/app/models/Score";
+import AIGuidance from "@/app/models/AIGuidance";
+import Student from "@/app/models/Students";
+import "@/app/models/Subject";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs, parentWardLinks, results, students, subjects } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
 
-function keywordScore(subjectName: string, score: number, keywords: string[]) {
-  const name = subjectName.toLowerCase();
-  return keywords.some((keyword) => name.includes(keyword)) ? score : 0;
-}
+/**
+ * AI Guidance Counselor for JSS3 Students
+ * Analyzes final scores to recommend Science, Art, or Commercial stream
+ */
 
 export async function POST(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
-    if (!user || (user.role !== "ADMIN" && user.role !== "PARENT")) {
+    const admin: any = verifyToken(token || "");
+
+    if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const studentId = String(body?.studentId || "").trim();
+    const { studentId } = await req.json();
+
     if (!studentId) {
-      return NextResponse.json({ error: "studentId is required" }, { status: 400 });
+      return NextResponse.json({ error: "studentId required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    if (user.role === "PARENT") {
-      const link = await d1
-        .select({ id: parentWardLinks.id })
-        .from(parentWardLinks)
-        .where(
-          and(
-            eq(parentWardLinks.schoolId, user.schoolId),
-            eq(parentWardLinks.parentId, user.userId),
-            eq(parentWardLinks.studentId, studentId)
-          )
-        )
-        .limit(1);
-      if (!link[0]) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
-
-    const studentRows = await d1
-      .select({ id: students.id, firstName: students.firstName, lastName: students.lastName })
-      .from(students)
-      .where(and(eq(students.schoolId, user.schoolId), eq(students.id, studentId)))
-      .limit(1);
-
-    if (!studentRows[0]) {
-      return NextResponse.json({ error: "Student not found" }, { status: 404 });
-    }
-
-    const scoreRows = await d1
-      .select({ subjectName: subjects.name, score: results.score })
-      .from(results)
-      .innerJoin(subjects, eq(results.subjectId, subjects.id))
-      .where(and(eq(results.schoolId, user.schoolId), eq(results.studentId, studentId)));
-
-    if (scoreRows.length === 0) {
-      const emptyPayload = {
-        student: {
-          id: studentRows[0].id,
-          fullName: `${studentRows[0].firstName} ${studentRows[0].lastName}`.trim(),
-        },
-        recommendations: [],
-        topPath: null,
-        summary: { message: "No score history available for recommendation.", model: "heuristic-v1", scoreSampleSize: 0 },
-      };
-
-      const now = new Date();
-      await d1.insert(auditLogs).values({
-        id: crypto.randomUUID(),
-        schoolId: user.schoolId,
-        actorId: user.userId,
-        action: "AI_JSS3_RECOMMENDATION_GENERATED",
-        metaJson: JSON.stringify({
-          studentId,
-          studentName: emptyPayload.student.fullName,
-          level: "JSS3",
-          recommendations: emptyPayload.recommendations,
-          topChoice: emptyPayload.topPath,
-          summary: emptyPayload.summary,
-        }),
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      return NextResponse.json(emptyPayload);
-    }
-
-    const scienceKeywords = ["math", "physics", "chem", "biology", "basic science", "further math"];
-    const commercialKeywords = ["economics", "commerce", "account", "business", "book keeping"];
-    const artsKeywords = ["english", "literature", "government", "history", "crk", "irs", "civic"];
-
-    let science = 0;
-    let commercial = 0;
-    let arts = 0;
-    let considered = 0;
-
-    for (const row of scoreRows) {
-      const score = Number(row.score) || 0;
-      science += keywordScore(row.subjectName, score, scienceKeywords);
-      commercial += keywordScore(row.subjectName, score, commercialKeywords);
-      arts += keywordScore(row.subjectName, score, artsKeywords);
-      considered += 1;
-    }
-
-    const normalized = considered ? (value: number) => Number((value / considered).toFixed(2)) : () => 0;
-    const ranked = [
-      {
-        path: "SCIENCE",
-        confidence: normalized(science),
-        reason: "Strong performance in Mathematics and core science-related subjects.",
-      },
-      {
-        path: "COMMERCIAL",
-        confidence: normalized(commercial),
-        reason: "Consistent scores in business and commerce-oriented subjects.",
-      },
-      {
-        path: "ARTS",
-        confidence: normalized(arts),
-        reason: "Good outcomes in language, humanities, and social science subjects.",
-      },
-    ].sort((a, b) => b.confidence - a.confidence);
-
-    const responsePayload = {
-      student: {
-        id: studentRows[0].id,
-        fullName: `${studentRows[0].firstName} ${studentRows[0].lastName}`.trim(),
-      },
-      recommendations: ranked,
-      topPath: ranked[0]?.path || null,
-      summary: {
-        model: "heuristic-v1",
-        scoreSampleSize: scoreRows.length,
-      },
-    };
-
-    const now = new Date();
-    await d1.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      schoolId: user.schoolId,
-      actorId: user.userId,
-      action: "AI_JSS3_RECOMMENDATION_GENERATED",
-      metaJson: JSON.stringify({
-        studentId,
-        studentName: responsePayload.student.fullName,
-        level: "JSS3",
-        recommendations: responsePayload.recommendations,
-        topChoice: responsePayload.topPath,
-        summary: responsePayload.summary,
-      }),
-      createdAt: now,
-      updatedAt: now,
+    // Check if recommendation already exists
+    const existingRecommendation = await AIGuidance.findOne({
+      schoolId: admin.schoolId,
+      studentId,
+      stage: "JSS3"
     });
 
-    return NextResponse.json(responsePayload);
-  } catch (error: unknown) {
-    console.error("JSS3 recommendation error:", error);
+    if (existingRecommendation) {
+      return NextResponse.json({
+        message: "Recommendation already exists for this student",
+        recommendation: existingRecommendation
+      });
+    }
+
+    // Get all JSS3 scores for this student
+    const scores = await Score.find({ studentId })
+      .populate("subjectId", "name code")
+      .lean();
+
+    if (scores.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No scores found for this student. Cannot generate recommendation.",
+          recommendation: "PENDING"
+        },
+        { status: 400 }
+      );
+    }
+
+    // Group subjects and calculate totals by stream
+    let science = 0,
+      art = 0,
+      commercial = 0;
+    let scienceCount = 0,
+      artCount = 0,
+      commercialCount = 0;
+
+    // Subject categorization (Nigerian curriculum)
+    const scienceSubjects = [
+      "mathematics",
+      "physics",
+      "chemistry",
+      "biology",
+      "integrated science",
+      "agricultural science"
+    ];
+    const artSubjects = [
+      "english",
+      "literature",
+      "history",
+      "government",
+      "crs",
+      "geography",
+      "french"
+    ];
+    const commercialSubjects = [
+      "economics",
+      "commerce",
+      "business studies",
+      "accounting",
+      "office practice"
+    ];
+
+    scores.forEach((score: any) => {
+      const subjectName = (score.subjectId?.name || "")
+        .toLowerCase()
+        .trim();
+
+      if (scienceSubjects.some((s) => subjectName.includes(s))) {
+        science += score.total || 0;
+        scienceCount++;
+      } else if (artSubjects.some((s) => subjectName.includes(s))) {
+        art += score.total || 0;
+        artCount++;
+      } else if (commercialSubjects.some((s) => subjectName.includes(s))) {
+        commercial += score.total || 0;
+        commercialCount++;
+      }
+    });
+
+    // Calculate averages
+    const scienceAvg = scienceCount > 0 ? science / scienceCount : 0;
+    const artAvg = artCount > 0 ? art / artCount : 0;
+    const commercialAvg = commercialCount > 0 ? commercial / commercialCount : 0;
+
+    // Determine the best fit
+    let recommendation = "ART"; // Default
+    let reasons = [];
+
+    if (scienceAvg >= artAvg && scienceAvg >= commercialAvg && scienceCount > 0) {
+      recommendation = "SCIENCE";
+      reasons = [
+        `Science subjects average: ${scienceAvg.toFixed(1)}/100`,
+        `Strong performance in Mathematics, Physics, Chemistry`,
+        `Suitable for engineering, medicine, or tech careers`
+      ];
+    } else if (commercialAvg >= artAvg && commercialCount > 0) {
+      recommendation = "COMMERCIAL";
+      reasons = [
+        `Commercial subjects average: ${commercialAvg.toFixed(1)}/100`,
+        `Strong performance in Economics, Commerce, Accounting`,
+        `Suitable for business, finance, or accounting careers`
+      ];
+    } else {
+      recommendation = "ART";
+      reasons = [
+        `Arts subjects average: ${artAvg.toFixed(1)}/100`,
+        `Strong performance in Languages, History, Government`,
+        `Suitable for humanities, law, public service careers`
+      ];
+    }
+
+    // Create guidance record
+    const guidance = await AIGuidance.create({
+      schoolId: admin.schoolId,
+      studentId,
+      stage: "JSS3",
+      recommendation,
+      reasons
+    });
+
+    return NextResponse.json({
+      message: "AI Guidance recommendation generated successfully",
+      recommendation: guidance.recommendation,
+      reasons: guidance.reasons,
+      guidanceId: guidance._id.toString()
+    });
+  } catch (error: any) {
+    console.error("JSS3 AI Guidance error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate JSS3 recommendation" },
+      { error: error.message || "Failed to generate recommendation" },
       { status: 500 }
     );
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+// Get recommendation for a student
+export async function GET(req: Request) {
+  try {
+    await connectDB();
+    const token = req.headers.get("authorization")?.split(" ")[1];
+    const user: any = verifyToken(token || "");
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const studentId = searchParams.get("studentId");
+
+    if (!studentId) {
+      return NextResponse.json({ error: "studentId required" }, { status: 400 });
+    }
+
+    const guidance = await AIGuidance.findOne({
+      schoolId: user.schoolId,
+      studentId,
+      stage: "JSS3"
+    }).lean();
+
+    if (!guidance) {
+      return NextResponse.json({
+        recommendation: null,
+        message: "No guidance recommendation found for this student"
+      });
+    }
+
+    return NextResponse.json({ guidance });
+  } catch (error: any) {
+    console.error("Fetch guidance error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to fetch guidance" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function PUT() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
-}
-
-export async function PATCH() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
-}
-
-export async function DELETE() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
-}

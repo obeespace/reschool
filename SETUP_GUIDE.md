@@ -7,9 +7,9 @@ This guide helps you set up a test school with sample data.
 Create a `.env.local` file in the root directory:
 
 ```env
-Cloudflare D1_URI=Cloudflare D1://localhost:27017/reschool
-# OR use Cloudflare D1 Atlas
-# Cloudflare D1_URI=Cloudflare D1+srv://username:password@cluster.Cloudflare D1.net/reschool
+MONGODB_URI=mongodb://localhost:27017/reschool
+# OR use MongoDB Atlas
+# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/reschool
 
 JWT_SECRET=your_super_secret_jwt_key_here_min_32_chars
 NEXT_PUBLIC_API_URL=http://localhost:3000
@@ -156,10 +156,10 @@ POST /api/users/create
 
 ## Common Issues
 
-### Cloudflare D1 Connection Failed
-- Ensure Cloudflare D1 is running
-- Check Cloudflare D1_URI in .env.local
-- For local Cloudflare D1: `mongod --dbpath=/path/to/data`
+### MongoDB Connection Failed
+- Ensure MongoDB is running
+- Check MONGODB_URI in .env.local
+- For local MongoDB: `mongod --dbpath=/path/to/data`
 
 ### JWT Token Errors
 - Ensure JWT_SECRET is set and at least 32 characters

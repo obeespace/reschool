@@ -1,81 +1,66 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import Term from "@/app/models/Term";
+import Score from "@/app/models/Score";
+import "@/app/models/Class";
+import "@/app/models/AcademicYear";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { reportCards, sessions, terms } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getParentWardData } from "@/app/utils/schoolRelationships";
-import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
 
 export async function GET(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const parent: ITokenPayload | null = verifyToken(token || "");
+    const user = verifyToken(token || "");
 
-    if (!parent || parent.role !== "PARENT") {
+    if (!user || user.role !== "PARENT") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const wards = await Student.find({ parentId: user.userId })
+      .populate("currentClassId", "level arm")
+      .lean();
 
-    const payload = await getOrSetServerCache({
-      key: `parents:dashboard:${parent.schoolId}:${parent.userId}`,
-      ttlMs: 45_000,
-      bypass: shouldBypassServerCache(req),
-      factory: async () => {
-        const activeTerm = await d1
-          .select({ id: terms.id, termNumber: terms.termNumber, sessionId: terms.sessionId })
-          .from(terms)
-          .where(and(eq(terms.schoolId, parent.schoolId), eq(terms.isCurrent, true)))
-          .limit(1);
+    const activeTerm = await Term.findOne({
+      schoolId: user.schoolId,
+      isActive: true
+    }).populate("academicYearId", "name").lean();
 
-        const activeSession = activeTerm[0]
-          ? await d1
-              .select({ year: sessions.year })
-              .from(sessions)
-              .where(eq(sessions.id, activeTerm[0].sessionId))
-              .limit(1)
-          : [];
+    const wardIds = wards.map((w: any) => w._id);
 
-        const wards = await getParentWardData(d1, parent.schoolId, parent.userId);
-        const wardIds = wards.map((ward) => ward.id).filter(Boolean);
+    const reportsAvailable = activeTerm && activeTerm.isPaid
+      ? await Score.countDocuments({
+          academicYearId: activeTerm.academicYearId,
+          term: activeTerm.termNumber,
+          studentId: { $in: wardIds }
+        })
+      : 0;
 
-        const reportCount = activeTerm[0] && wardIds.length
-          ? (
-              await d1
-                .select({ id: reportCards.id })
-                .from(reportCards)
-                .where(
-                  and(
-                    eq(reportCards.schoolId, parent.schoolId),
-                    inArray(reportCards.studentId, wardIds),
-                    eq(reportCards.termId, activeTerm[0].id)
-                  )
-                )
-            ).length
-          : 0;
+    const termLabel = activeTerm
+      ? `${activeTerm.termNumber}${activeTerm.termNumber === 1 ? "st" : activeTerm.termNumber === 2 ? "nd" : "rd"} Term`
+      : "N/A";
 
-        return {
-          wards,
-          stats: {
-            wardsCount: wards.length,
-            activeTerm:
-              activeTerm[0] && activeSession[0]
-                ? `${activeSession[0].year} T${activeTerm[0].termNumber}`
-                : "N/A",
-            reportsAvailable: reportCount,
-          },
-        };
+    return NextResponse.json({
+      wards,
+      stats: {
+        wardsCount: wards.length,
+        activeTerm: termLabel,
+        reportsAvailable,
+        termPaid: activeTerm?.isPaid || false
       },
+      activeTerm: activeTerm
+        ? { 
+            academicYear: (activeTerm.academicYearId as any)?.name || "N/A",
+            term: activeTerm.termNumber,
+            isPaid: activeTerm.isPaid,
+            isClosed: activeTerm.isClosed
+          }
+        : null
     });
-
-    return NextResponse.json(payload);
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error("Parent dashboard error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch parent dashboard" },
+      { error: error.message || "Failed to fetch parent dashboard" },
       { status: 500 }
     );
   }

@@ -20,12 +20,9 @@ export default function TeacherScores() {
   const [classes, setClasses] = useState<any[]>([]);
   const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
   const [dailyMarks, setDailyMarks] = useState<any[]>([]);
-  const [academicScores, setAcademicScores] = useState<any[]>([]);
   const [academicYear, setAcademicYear] = useState<any>(null);
   const [isSheetLoading, setIsSheetLoading] = useState(false);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
-  const [isAcademicSheetLoading, setIsAcademicSheetLoading] = useState(false);
-  const [isSavingAcademic, setIsSavingAcademic] = useState(false);
 
   const [bulkForm, setBulkForm] = useState({
     classId: "",
@@ -35,11 +32,6 @@ export default function TeacherScores() {
   });
 
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
-  const [academicForm, setAcademicForm] = useState({
-    classId: "",
-    subjectId: "",
-  });
-  const [academicRows, setAcademicRows] = useState<BulkRow[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -63,7 +55,6 @@ export default function TeacherScores() {
         setAcademicYear(data.academicYear);
         if (data.academicYear) {
           fetchDailyMarks(data.academicYear._id);
-          fetchAcademicScores();
         }
       }
 
@@ -106,23 +97,6 @@ export default function TeacherScores() {
     }
   };
 
-  const fetchAcademicScores = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const response = await fetch("/api/scores/view", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAcademicScores(data.scores || []);
-      }
-    } catch (error) {
-      console.error("Error fetching academic scores:", error);
-    }
-  };
-
   const allowedClassIds = useMemo(() => {
     const ids = new Set<string>();
     teacherAssignments.forEach((assignment: any) => {
@@ -154,23 +128,6 @@ export default function TeacherScores() {
 
     return Array.from(uniqueSubjects.values());
   }, [bulkForm.classId, teacherAssignments]);
-
-  const availableAcademicSubjects = useMemo(() => {
-    if (!academicForm.classId) return [];
-    const uniqueSubjects = new Map<string, any>();
-
-    teacherAssignments.forEach((assignment: any) => {
-      const teachesSelectedClass = (assignment.classIds || []).some(
-        (classItem: any) => classItem?._id?.toString() === academicForm.classId
-      );
-
-      if (teachesSelectedClass && assignment.subjectId?._id) {
-        uniqueSubjects.set(assignment.subjectId._id.toString(), assignment.subjectId);
-      }
-    });
-
-    return Array.from(uniqueSubjects.values());
-  }, [academicForm.classId, teacherAssignments]);
 
   const fetchStudentsByClass = async (classId: string) => {
     const token = localStorage.getItem("token");
@@ -240,66 +197,8 @@ export default function TeacherScores() {
     }
   };
 
-  const loadAcademicSheet = async () => {
-    if (!academicForm.classId || !academicForm.subjectId) {
-      toast.error("Please select class and subject first");
-      return;
-    }
-
-    setIsAcademicSheetLoading(true);
-    try {
-      const token = localStorage.getItem("token");
-      const students = await fetchStudentsByClass(academicForm.classId);
-
-      const scoresRes = await fetch(
-        `/api/scores/view?classId=${academicForm.classId}&subjectId=${academicForm.subjectId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      let existingScores: any[] = [];
-      if (scoresRes.ok) {
-        const scoresData = await scoresRes.json();
-        existingScores = scoresData.scores || [];
-      }
-
-      const scoreByStudent = new Map<string, any>();
-      existingScores.forEach((row: any) => {
-        const sid = row?.studentId?._id;
-        if (sid) scoreByStudent.set(String(sid), row);
-      });
-
-      setAcademicRows(
-        students.map((student: any) => {
-          const existing = scoreByStudent.get(String(student._id));
-          return {
-            studentId: String(student._id),
-            studentName: student.fullName,
-            score: existing?.score != null ? String(existing.score) : "",
-            notes: "",
-          };
-        })
-      );
-
-      toast.success("Academic sheet loaded");
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to load academic sheet");
-    } finally {
-      setIsAcademicSheetLoading(false);
-    }
-  };
-
   const updateBulkRow = (index: number, field: "score" | "notes", value: string) => {
     setBulkRows((prev) =>
-      prev.map((row, rowIndex) =>
-        rowIndex === index
-          ? { ...row, [field]: value }
-          : row
-      )
-    );
-  };
-
-  const updateAcademicRow = (index: number, field: "score" | "notes", value: string) => {
-    setAcademicRows((prev) =>
       prev.map((row, rowIndex) =>
         rowIndex === index
           ? { ...row, [field]: value }
@@ -361,57 +260,6 @@ export default function TeacherScores() {
       toast.error("Failed to save marks");
     } finally {
       setIsSavingBulk(false);
-    }
-  };
-
-  const handleSaveAcademicScores = async () => {
-    if (!academicForm.classId || !academicForm.subjectId) {
-      toast.error("Class and subject are required");
-      return;
-    }
-
-    const entries = academicRows
-      .filter((row) => row.score !== "")
-      .map((row) => ({
-        studentId: row.studentId,
-        score: Number(row.score),
-      }));
-
-    if (entries.length === 0) {
-      toast.error("Enter at least one score to save");
-      return;
-    }
-
-    setIsSavingAcademic(true);
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/scores/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          classId: academicForm.classId,
-          subjectId: academicForm.subjectId,
-          entries,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        toast.error(data.error || "Failed to upload academic scores");
-        return;
-      }
-
-      toast.success(`Saved ${data.summary?.totalProcessed || entries.length} academic scores`);
-      await fetchAcademicScores();
-      await loadAcademicSheet();
-    } catch (error) {
-      console.error("Error uploading academic scores:", error);
-      toast.error("Failed to upload academic scores");
-    } finally {
-      setIsSavingAcademic(false);
     }
   };
 
@@ -610,7 +458,7 @@ export default function TeacherScores() {
                     {dailyMarks.map((mark: any, index: number) => (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="px-6 py-3 text-sm">{mark.studentId?.fullName}</td>
-                        <td className="px-6 py-3 text-sm">{mark.subjectId?.name || mark.subjectName || mark.subjectId}</td>
+                        <td className="px-6 py-3 text-sm">{mark.subjectId?.name}</td>
                         <td className="px-6 py-3 text-sm">
                           <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-medium capitalize">
                             {mark.type}
@@ -618,7 +466,7 @@ export default function TeacherScores() {
                         </td>
                         <td className="px-6 py-3 text-sm font-semibold">{mark.score}/{mark.maxScore}</td>
                         <td className="px-6 py-3 text-sm text-gray-600">
-                          {mark.recordedDate ? new Date(mark.recordedDate).toLocaleDateString() : "N/A"}
+                          {new Date(mark.date).toLocaleDateString()}
                         </td>
                       </tr>
                     ))}
@@ -638,122 +486,8 @@ export default function TeacherScores() {
               Used for official transcripts and academic history.
             </p>
           </div>
-
-          <div className="bg-white rounded-lg shadow p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select
-                label="Class"
-                value={academicForm.classId}
-                onChange={(e) => {
-                  setAcademicForm((prev) => ({ ...prev, classId: e.target.value, subjectId: "" }));
-                  setAcademicRows([]);
-                }}
-                options={[
-                  { value: "", label: "Select Class" },
-                  ...availableClasses.map((classItem: any) => ({
-                    value: classItem._id,
-                    label: `${classItem.level} ${classItem.arm}`,
-                  })),
-                ]}
-                required
-              />
-
-              <Select
-                label="Subject"
-                value={academicForm.subjectId}
-                onChange={(e) => {
-                  setAcademicForm((prev) => ({ ...prev, subjectId: e.target.value }));
-                  setAcademicRows([]);
-                }}
-                options={[
-                  { value: "", label: "Select Subject" },
-                  ...availableAcademicSubjects.map((subject: any) => ({
-                    value: subject._id,
-                    label: subject.name,
-                  })),
-                ]}
-                required
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <Button onClick={loadAcademicSheet} disabled={isAcademicSheetLoading}>
-                {isAcademicSheetLoading ? "Loading Sheet..." : "Load Academic Sheet"}
-              </Button>
-              <Button variant="secondary" onClick={() => setAcademicRows([])}>
-                Clear Sheet
-              </Button>
-            </div>
-          </div>
-
-          {academicRows.length > 0 && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="px-6 py-4 border-b flex justify-between items-center">
-                <h3 className="font-semibold text-gray-900">Academic Score Sheet</h3>
-                <Button onClick={handleSaveAcademicScores} disabled={isSavingAcademic}>
-                  {isSavingAcademic ? "Saving..." : "Save Academic Scores"}
-                </Button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-160">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {academicRows.map((row, index) => (
-                      <tr key={row.studentId} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.studentName}</td>
-                        <td className="px-6 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={row.score}
-                            onChange={(e) => updateAcademicRow(index, "score", e.target.value)}
-                            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            placeholder="0-100"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <h3 className="font-semibold text-gray-900">Recent Academic Records</h3>
-            </div>
-            {academicScores.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">No academic records uploaded yet</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Subject</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {academicScores.map((score: any, index: number) => (
-                      <tr key={score.id || index} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm">{score.studentId?.fullName || "N/A"}</td>
-                        <td className="px-6 py-3 text-sm">{score.subjectId?.name || "N/A"}</td>
-                        <td className="px-6 py-3 text-sm font-semibold">{score.score}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <div className="bg-white rounded-lg shadow p-8 text-center">
+            <p className="text-gray-600">Academic records upload feature coming soon</p>
           </div>
         </div>
       )}

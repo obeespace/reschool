@@ -1,244 +1,116 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Class from "@/app/models/Class";
+import Student from "@/app/models/Students";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import User from "@/app/models/User";
+import "@/app/models/Subject";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import {
-  classes,
-  classSubjects,
-  enrollments,
-  parentWardLinks,
-  students,
-  subjects,
-  teacherClassAssignments,
-  teacherSubjectAssignments,
-  terms,
-  users,
-} from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { splitLevelAndArm } from "@/app/utils/schoolRelationships";
 
-export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
+    const user = verifyToken(token || "");
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { id } = await context.params;
-    const classId = String(id || "").trim();
-    if (!classId) {
-      return NextResponse.json({ error: "Class ID is required" }, { status: 400 });
-    }
+    const { id: classId } = await params;
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    // Get class details
+    const classDoc = await Class.findOne({ 
+      _id: classId, 
+      schoolId: user.schoolId 
+    })
+      .populate("classTeacherId", "fullName email")
+      .populate("subjectIds", "name code");
 
-    const classRows = await d1
-      .select({ id: classes.id, name: classes.name, level: classes.level })
-      .from(classes)
-      .where(and(eq(classes.id, classId), eq(classes.schoolId, user.schoolId)))
-      .limit(1);
-
-    if (!classRows[0]) {
+    if (!classDoc) {
       return NextResponse.json({ error: "Class not found" }, { status: 404 });
     }
 
-    const currentTermRows = await d1
-      .select({ id: terms.id })
-      .from(terms)
-      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
+    // Get students in this class
+    const students = await Student.find({ 
+      schoolId: user.schoolId,
+      currentClassId: classId 
+    })
+      .populate("parentId", "fullName email")
+      .sort({ fullName: 1 });
 
-    const currentTermId = currentTermRows[0]?.id;
+    // Get teachers teaching subjects in this class
+    const teachersTeachingHere = await TeacherProfile.find({
+      schoolId: user.schoolId,
+      "subjectsAndClasses.classIds": classId
+    })
+      .populate("userId", "fullName email")
+      .populate("subjectsAndClasses.subjectId", "name code");
 
-    const [classTeacherRows, classSubjectRows] = await Promise.all([
-      d1
-        .select({ teacherId: teacherClassAssignments.teacherId })
-        .from(teacherClassAssignments)
-        .where(and(eq(teacherClassAssignments.schoolId, user.schoolId), eq(teacherClassAssignments.classId, classId)))
-        .limit(1),
-      d1
-        .select({ subjectId: classSubjects.subjectId })
-        .from(classSubjects)
-        .where(and(eq(classSubjects.schoolId, user.schoolId), eq(classSubjects.classId, classId))),
-    ]);
-
-    const subjectIds = classSubjectRows.map((row) => row.subjectId);
-    const subjectRows = subjectIds.length
-      ? await d1
-          .select({ id: subjects.id, name: subjects.name })
-          .from(subjects)
-          .where(and(eq(subjects.schoolId, user.schoolId), inArray(subjects.id, subjectIds)))
-      : [];
-
-    const teacherRows = classTeacherRows[0]?.teacherId
-      ? await d1
-          .select({ id: users.id, fullName: users.name, email: users.email })
-          .from(users)
-          .where(
-            and(
-              eq(users.schoolId, user.schoolId),
-              eq(users.id, classTeacherRows[0].teacherId),
-              eq(users.role, "TEACHER")
-            )
-          )
-          .limit(1)
-      : [];
-
-    const enrollRows = currentTermId
-      ? await d1
-          .select({
-            studentId: enrollments.studentId,
-            firstName: students.firstName,
-            lastName: students.lastName,
-            admissionNumber: students.admissionNumber,
-            gender: students.gender,
-            dateOfBirth: students.dateOfBirth,
-          })
-          .from(enrollments)
-          .innerJoin(students, eq(enrollments.studentId, students.id))
-          .where(
-            and(
-              eq(enrollments.schoolId, user.schoolId),
-              eq(enrollments.classId, classId),
-              eq(enrollments.termId, currentTermId)
-            )
-          )
-      : [];
-
-    const studentIds = enrollRows.map((row) => row.studentId);
-    const wardLinks = studentIds.length
-      ? await d1
-          .select({ studentId: parentWardLinks.studentId, parentId: parentWardLinks.parentId, isPrimary: parentWardLinks.isPrimary })
-          .from(parentWardLinks)
-          .where(and(eq(parentWardLinks.schoolId, user.schoolId), inArray(parentWardLinks.studentId, studentIds)))
-      : [];
-
-    const parentIds = [...new Set(wardLinks.map((row) => row.parentId))];
-    const parentRows = parentIds.length
-      ? await d1
-          .select({ id: users.id, fullName: users.name, email: users.email })
-          .from(users)
-          .where(and(eq(users.schoolId, user.schoolId), eq(users.role, "PARENT"), inArray(users.id, parentIds)))
-      : [];
-
-    const parentMap = new Map(parentRows.map((row) => [row.id, row]));
-    const parentByStudent = new Map<string, string>();
-    for (const link of wardLinks) {
-      if (!parentByStudent.has(link.studentId) || link.isPrimary) {
-        parentByStudent.set(link.studentId, link.parentId);
-      }
-    }
-
-    const subjectTeacherRows = subjectIds.length
-      ? await d1
-          .select({
-            subjectId: teacherSubjectAssignments.subjectId,
-            teacherId: teacherSubjectAssignments.teacherId,
-          })
-          .from(teacherSubjectAssignments)
-          .where(
-            and(
-              eq(teacherSubjectAssignments.schoolId, user.schoolId),
-              eq(teacherSubjectAssignments.classId, classId),
-              inArray(teacherSubjectAssignments.subjectId, subjectIds)
-            )
-          )
-      : [];
-
-    const subjectTeacherIds = [...new Set(subjectTeacherRows.map((row) => row.teacherId))];
-    const subjectTeacherUsers = subjectTeacherIds.length
-      ? await d1
-          .select({ id: users.id, fullName: users.name, email: users.email })
-          .from(users)
-          .where(and(eq(users.schoolId, user.schoolId), eq(users.role, "TEACHER"), inArray(users.id, subjectTeacherIds)))
-      : [];
-
-    const subjectMap = new Map(
-      subjectRows.map((row) => [
-        row.id,
-        {
-          _id: row.id,
-          name: row.name,
-          code: row.name
-            .split(/\s+/)
-            .map((part) => part[0]?.toUpperCase() || "")
-            .join("")
-            .slice(0, 6),
-        },
-      ])
-    );
-
-    const teacherMap = new Map(subjectTeacherUsers.map((row) => [row.id, row]));
-    const parsedClass = splitLevelAndArm(classRows[0].name, classRows[0].level);
-
-    const studentsPayload = enrollRows.map((row) => {
-      const parentId = parentByStudent.get(row.studentId);
-      const parent = parentId ? parentMap.get(parentId) : null;
-      return {
-        _id: row.studentId,
-        fullName: `${row.firstName} ${row.lastName}`.trim(),
-        registrationNumber: row.admissionNumber,
-        gender: row.gender || "N/A",
-        dateOfBirth: row.dateOfBirth,
-        parent: parent
-          ? {
-              fullName: parent.fullName,
-              email: parent.email,
+    // Build subject-teacher mapping
+    const subjectTeachers = teachersTeachingHere.reduce((acc: any[], teacherProfile: any) => {
+      teacherProfile.subjectsAndClasses.forEach((assignment: any) => {
+        if (assignment.classIds.some((id: any) => id.toString() === classId)) {
+          acc.push({
+            subject: {
+              _id: assignment.subjectId._id,
+              name: assignment.subjectId.name,
+              code: assignment.subjectId.code
+            },
+            teacher: {
+              _id: teacherProfile.userId._id,
+              fullName: teacherProfile.userId.fullName,
+              email: teacherProfile.userId.email
             }
-          : null,
-      };
-    });
+          });
+        }
+      });
+      return acc;
+    }, []);
 
-    const maleStudents = studentsPayload.filter((student) => String(student.gender).toUpperCase() === "MALE").length;
-    const femaleStudents = studentsPayload.filter((student) => String(student.gender).toUpperCase() === "FEMALE").length;
+    // Calculate statistics
+    const stats = {
+      totalStudents: students.length,
+      maleStudents: students.filter((s: any) => s.gender === "MALE").length,
+      femaleStudents: students.filter((s: any) => s.gender === "FEMALE").length,
+      totalSubjects: classDoc.subjectIds?.length || 0,
+      hasClassTeacher: !!classDoc.classTeacherId
+    };
 
-    return NextResponse.json({
-      class: {
-        _id: classRows[0].id,
-        name: classRows[0].name,
-        level: parsedClass.level,
-        arm: parsedClass.arm,
-        classTeacher: teacherRows[0]
-          ? {
-              _id: teacherRows[0].id,
-              fullName: teacherRows[0].fullName,
-              email: teacherRows[0].email,
-            }
-          : null,
-        subjects: subjectIds.map((subjectId) => subjectMap.get(subjectId)).filter(Boolean),
-        students: studentsPayload,
-        subjectTeachers: subjectTeacherRows
-          .map((row) => {
-            const subject = subjectMap.get(row.subjectId);
-            const teacher = teacherMap.get(row.teacherId);
-            if (!subject || !teacher) return null;
-            return {
-              subject,
-              teacher: {
-                _id: teacher.id,
-                fullName: teacher.fullName,
-                email: teacher.email,
-              },
-            };
-          })
-          .filter(Boolean),
-        stats: {
-          totalStudents: studentsPayload.length,
-          maleStudents,
-          femaleStudents,
-          totalSubjects: subjectIds.length,
-          hasClassTeacher: Boolean(teacherRows[0]),
-        },
-      },
-    });
-  } catch (error: unknown) {
-    console.error("Class details error:", error);
+    const classDetails = {
+      _id: classDoc._id,
+      name: classDoc.name || `${classDoc.level} ${classDoc.arm}`,
+      level: classDoc.level,
+      arm: classDoc.arm,
+      classTeacher: classDoc.classTeacherId ? {
+        _id: classDoc.classTeacherId._id,
+        fullName: classDoc.classTeacherId.fullName,
+        email: classDoc.classTeacherId.email
+      } : null,
+      subjects: classDoc.subjectIds || [],
+      students: students.map((s: any) => ({
+        _id: s._id,
+        fullName: s.fullName,
+        registrationNumber: s.registrationNumber,
+        gender: s.gender,
+        dateOfBirth: s.dateOfBirth,
+        parent: s.parentId ? {
+          fullName: s.parentId.fullName,
+          email: s.parentId.email
+        } : null
+      })),
+      subjectTeachers,
+      stats
+    };
+
+    return NextResponse.json({ success: true, class: classDetails });
+  } catch (error: any) {
+    console.error("Get class details error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch class details" },
+      { error: error.message || "Failed to fetch class details" },
       { status: 500 }
     );
   }

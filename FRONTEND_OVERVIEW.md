@@ -401,7 +401,7 @@ Blue info box with monitoring tips
 - React 18
 - TypeScript
 - Tailwind CSS
-- Cloudflare D1
+- MongoDB
 - JWT Authentication
 
 ### Key Files:
@@ -498,7 +498,7 @@ All pages are mobile-friendly:
 
 **Issue:** No data showing
 - Backend server running?
-- Cloudflare D1 connected?
+- MongoDB connected?
 - Check browser console
 - Check network tab for API calls
 

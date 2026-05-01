@@ -18,21 +18,10 @@ interface Student {
   gender: string;
 }
 
-type StudentClass = {
-  level: string;
-  arm: string;
-} | null;
-
-type ClassOption = {
-  _id: string;
-  level: string;
-  arm: string;
-};
-
 export default function StudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
-  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,7 +48,7 @@ export default function StudentsPage() {
 
     fetchStudents();
     fetchClasses();
-  }, [router]);
+  }, []);
 
   const fetchStudents = async () => {
     try {
@@ -171,26 +160,17 @@ export default function StudentsPage() {
     {
       header: "Current Class",
       accessor: "currentClass" as keyof Student,
-      render: (value: StudentClass) => value ? `${value.level} ${value.arm}` : "Not assigned"
+      render: (value: any) => value ? `${value.level} ${value.arm}` : "Not assigned"
     },
     {
       header: "Gender",
       accessor: "gender" as keyof Student,
-      render: (value: string) => value || "N/A"
+      render: (value: any) => value || "N/A"
     },
     {
       header: "Date of Birth",
       accessor: "dateOfBirth" as keyof Student,
-      render: (value: string) => value ? new Date(value).toLocaleDateString() : "N/A"
-    },
-    {
-      header: "Actions",
-      accessor: "id" as keyof Student,
-      render: (_: string, row: Student) => (
-        <Button size="sm" onClick={() => router.push(`/admin/students/${row.id}`)}>
-          Academic Record
-        </Button>
-      )
+      render: (value: any) => value ? new Date(value).toLocaleDateString() : "N/A"
     }
   ];
 
@@ -216,7 +196,7 @@ export default function StudentsPage() {
         {students.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <p className="mb-2">No students enrolled yet</p>
-            <p className="text-sm">Use the Add Student button to enroll the first student</p>
+            <p className="text-sm">Use "+ Add Student" to enroll first student</p>
           </div>
         ) : (
           <div>
@@ -259,7 +239,7 @@ export default function StudentsPage() {
             onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
             options={[
               { value: "", label: "Select Class" },
-                ...classes.map((classItem) => ({
+              ...classes.map((classItem: any) => ({
                 value: classItem._id,
                 label: `${classItem.level} ${classItem.arm}`
               }))

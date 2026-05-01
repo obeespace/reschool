@@ -1,122 +1,82 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import DailyMark from "@/app/models/DailyMark";
+import "@/app/models/Students";
+import "@/app/models/Subject";
+import "@/app/models/User";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { dailyMarks, students, teacherSubjectAssignments, terms } from "@/app/db/schema";
-import { and, desc, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
+    const user: any = verifyToken(token || "");
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
-    const classId = String(searchParams.get("classId") || "").trim();
-    const subjectId = String(searchParams.get("subjectId") || "").trim();
-    const type = String(searchParams.get("type") || "").trim();
-    const academicYearId = String(searchParams.get("academicYearId") || "").trim();
+    const studentId = searchParams.get("studentId");
+    const academicYearId = searchParams.get("academicYearId");
+    const classId = searchParams.get("classId");
+    const subjectId = searchParams.get("subjectId");
+    const type = searchParams.get("type");
 
-    let termId = "";
-    if (academicYearId) {
-      const termRows = await d1
-        .select({ id: terms.id })
-        .from(terms)
-        .where(and(eq(terms.schoolId, user.schoolId), eq(terms.sessionId, academicYearId), eq(terms.isCurrent, true)))
-        .limit(1);
-      termId = termRows[0]?.id || "";
+    // Build query - always filter by school
+    const query: any = { schoolId: user.schoolId };
+
+    // Teachers can only see their own daily marks
+    if (user.role === "TEACHER") {
+      query.teacherId = user.userId;
     }
 
-    if (!termId) {
-      const currentTermRows = await d1
-        .select({ id: terms.id })
-        .from(terms)
-        .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-        .limit(1);
-      termId = currentTermRows[0]?.id || "";
+    if (studentId) query.studentId = studentId;
+    if (academicYearId) query.academicYearId = academicYearId;
+    if (classId) query.classId = classId;
+    if (subjectId) query.subjectId = subjectId;
+    if (type) {
+      const typeToAssessment: Record<string, string> = {
+        classwork: "CLASSWORK",
+        homework: "HOMEWORK",
+        test: "EVALUATION",
+        extracurricular: "EVALUATION",
+        exam: "EXAM"
+      };
+      query.assessmentType = typeToAssessment[type] || type;
     }
 
-    if (!termId) {
-      return NextResponse.json({ dailyMarks: [] });
-    }
+    const dailyMarks = await DailyMark.find(query)
+      .populate("studentId", "fullName admissionNumber")
+      .populate("subjectId", "name code")
+      .populate("teacherId", "fullName")
+      .sort({ recordedDate: -1 })
+      .lean();
 
-    if (user.role === "TEACHER" && classId && subjectId) {
-      const allowedRows = await d1
-        .select({ id: teacherSubjectAssignments.id })
-        .from(teacherSubjectAssignments)
-        .where(
-          and(
-            eq(teacherSubjectAssignments.schoolId, user.schoolId),
-            eq(teacherSubjectAssignments.teacherId, user.userId),
-            eq(teacherSubjectAssignments.classId, classId),
-            eq(teacherSubjectAssignments.subjectId, subjectId)
-          )
-        )
-        .limit(1);
+    const normalizedDailyMarks = dailyMarks.map((mark: any) => {
+      const assessmentToType: Record<string, string> = {
+        CLASSWORK: "classwork",
+        HOMEWORK: "homework",
+        EVALUATION: "test",
+        EXAM: "exam"
+      };
 
-      if (!allowedRows[0]) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
-
-    const query = d1
-      .select({
-        id: dailyMarks.id,
-        studentId: dailyMarks.studentId,
-        firstName: students.firstName,
-        lastName: students.lastName,
-        classId: dailyMarks.classId,
-        subjectId: dailyMarks.subjectId,
-        assessmentType: dailyMarks.assessmentType,
-        score: dailyMarks.score,
-        maxScore: dailyMarks.maxScore,
-        weightage: dailyMarks.weightage,
-        feedbackNotes: dailyMarks.feedbackNotes,
-        recordedDate: dailyMarks.recordedDate,
-      })
-      .from(dailyMarks)
-      .innerJoin(students, eq(dailyMarks.studentId, students.id))
-      .where(and(eq(dailyMarks.schoolId, user.schoolId), eq(dailyMarks.termId, termId), eq(dailyMarks.isDeleted, false)))
-      .orderBy(desc(dailyMarks.recordedDate));
-
-    const rows = await query;
-    const filteredRows = rows.filter((row) => {
-      if (classId && row.classId !== classId) return false;
-      if (subjectId && row.subjectId !== subjectId) return false;
-      if (type && row.assessmentType !== type) return false;
-      return true;
+      return {
+        ...mark,
+        type: mark.type || assessmentToType[mark.assessmentType] || "classwork",
+        date: mark.date || mark.recordedDate
+      };
     });
 
     return NextResponse.json({
-      dailyMarks: filteredRows.map((row) => ({
-        _id: row.id,
-        id: row.id,
-        studentId: {
-          _id: row.studentId,
-          id: row.studentId,
-          fullName: `${row.firstName} ${row.lastName}`.trim(),
-        },
-        classId: row.classId,
-        subjectId: row.subjectId,
-        type: row.assessmentType,
-        score: row.score,
-        maxScore: row.maxScore,
-        weightage: row.weightage,
-        feedbackNotes: row.feedbackNotes,
-        recordedDate: row.recordedDate,
-      })),
+      dailyMarks: normalizedDailyMarks,
+      total: normalizedDailyMarks.length
     });
-  } catch (error: unknown) {
-    console.error("List daily marks error:", error);
+
+  } catch (error: any) {
+    console.error("Error fetching daily marks:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to list daily marks" },
+      { error: error.message || "Failed to fetch daily marks" },
       { status: 500 }
     );
   }

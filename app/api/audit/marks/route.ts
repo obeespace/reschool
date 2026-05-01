@@ -1,105 +1,167 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import DailyMark from "@/app/models/DailyMark";
+import Score from "@/app/models/Score";
+import User from "@/app/models/User";
+import "@/app/models/Students";
+import "@/app/models/Term";
+import "@/app/models/Subject";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs } from "@/app/db/schema";
-import { and, desc, eq, like } from "drizzle-orm";
 
-function parseMeta(metaJson: string | null): Record<string, unknown> {
-  if (!metaJson) return {};
-  try {
-    return JSON.parse(metaJson) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
+/**
+ * Mark Audit Trail API
+ * Fetch complete history of mark modifications for compliance & transparency
+ * Access: ADMIN only
+ */
 
 export async function GET(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
+    const user: any = verifyToken(token || "");
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const rows = await d1
-      .select({
-        id: auditLogs.id,
-        actorId: auditLogs.actorId,
-        action: auditLogs.action,
-        metaJson: auditLogs.metaJson,
-        createdAt: auditLogs.createdAt,
-      })
-      .from(auditLogs)
-      .where(and(eq(auditLogs.schoolId, user.schoolId), like(auditLogs.action, "MARK_%")))
-      .orderBy(desc(auditLogs.createdAt));
-
-    return NextResponse.json({
-      logs: rows.map((row) => ({
-        id: row.id,
-        actorId: row.actorId,
-        action: row.action,
-        meta: parseMeta(row.metaJson),
-        createdAt: row.createdAt,
-      })),
-    });
-  } catch (error: unknown) {
-    console.error("Fetch mark audit logs error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch audit logs" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const body = await req.json();
-    const action = String(body?.action || "").trim();
-    const meta = body?.meta && typeof body.meta === "object" ? body.meta : {};
-
-    if (!action || !action.startsWith("MARK_")) {
+    if (!user || user.role !== "ADMIN") {
       return NextResponse.json(
-        { error: "action is required and must start with MARK_" },
-        { status: 400 }
+        { error: "Unauthorized. Admin access required." },
+        { status: 403 }
       );
     }
 
-    const now = new Date();
-    const id = crypto.randomUUID();
+    const { searchParams } = new URL(req.url);
+    const filterType = searchParams.get("type"); // DAILY_MARKS | SCORE
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+    const limit = parseInt(searchParams.get("limit") || "100");
 
-    await d1.insert(auditLogs).values({
-      id,
-      schoolId: user.schoolId,
-      actorId: user.userId,
-      action,
-      metaJson: JSON.stringify(meta),
-      createdAt: now,
-      updatedAt: now,
+    let auditTrail: any[] = [];
+
+    // Build date filter
+    const dateFilter: any = {};
+    if (startDate)
+      dateFilter.$gte = new Date(startDate);
+    if (endDate) dateFilter.$lte = new Date(endDate);
+
+    // Fetch Daily Marks audit trail
+    if (!filterType || filterType === "DAILY_MARKS") {
+      const dailyMarks = await DailyMark.find({
+        schoolId: user.schoolId,
+        ...(Object.keys(dateFilter).length && {
+          lastModifiedDate: dateFilter
+        })
+      })
+        .populate("recordedBy", "fullName email role")
+        .populate("lastModifiedBy", "fullName email role")
+        .populate("studentId", "name studentId")
+        .populate("termId", "name year")
+        .lean();
+
+      dailyMarks.forEach((mark: any) => {
+        // Add original entry
+        auditTrail.push({
+          id: mark._id.toString(),
+          type: "DAILY_MARK",
+          studentId: mark.studentId?._id,
+          studentName: mark.studentId?.name,
+          studentCode: mark.studentId?.studentId,
+          assessmentType: mark.assessmentType,
+          score: mark.score,
+          recordedBy: mark.recordedBy?.fullName,
+          recordedDate: mark.createdAt,
+          lastModifiedBy: mark.lastModifiedBy?.fullName,
+          lastModifiedDate: mark.lastModifiedDate,
+          modificationCount: mark.modificationHistory?.length || 0
+        });
+
+        // Add individual modifications
+        if (mark.modificationHistory && mark.modificationHistory.length > 0) {
+          mark.modificationHistory.forEach((mod: any, idx: number) => {
+            auditTrail.push({
+              id: `${mark._id}-mod-${idx}`,
+              type: "DAILY_MARK_MODIFICATION",
+              studentId: mark.studentId?._id,
+              studentName: mark.studentId?.name,
+              assessmentType: mark.assessmentType,
+              field: mod.field,
+              oldValue: mod.oldValue,
+              newValue: mod.newValue,
+              modifiedBy: mod.modifiedBy,
+              modifiedDate: mod.modifiedDate,
+              reason: mod.reason
+            });
+          });
+        }
+      });
+    }
+
+    // Fetch Score audit trail
+    if (!filterType || filterType === "SCORE") {
+      const scores = await Score.find({
+        schoolId: user.schoolId,
+        ...(Object.keys(dateFilter).length && {
+          lastModifiedDate: dateFilter
+        })
+      })
+        .populate("studentId", "name studentId")
+        .populate("termId", "name year")
+        .populate("subjectId", "name code")
+        .lean();
+
+      scores.forEach((score: any) => {
+        auditTrail.push({
+          id: score._id.toString(),
+          type: "SCORE",
+          studentId: score.studentId?._id,
+          studentName: score.studentId?.name,
+          studentCode: score.studentId?.studentId,
+          subject: score.subjectId?.name,
+          totalScore: score.total,
+          grade: score.grade,
+          lastModifiedDate: score.lastModifiedDate,
+          modificationCount: score.modificationHistory?.length || 0
+        });
+
+        // Add modifications
+        if (score.modificationHistory && score.modificationHistory.length > 0) {
+          score.modificationHistory.forEach((mod: any, idx: number) => {
+            auditTrail.push({
+              id: `${score._id}-mod-${idx}`,
+              type: "SCORE_MODIFICATION",
+              studentId: score.studentId?._id,
+              studentName: score.studentId?.name,
+              subject: score.subjectId?.name,
+              field: mod.field,
+              oldValue: mod.oldValue,
+              newValue: mod.newValue,
+              modifiedBy: mod.modifiedBy,
+              modifiedDate: mod.modifiedDate,
+              reason: mod.reason
+            });
+          });
+        }
+      });
+    }
+
+    // Sort by date descending and limit
+    auditTrail = auditTrail
+      .sort(
+        (a, b) =>
+          new Date(b.modifiedDate || b.lastModifiedDate || b.recordedDate).getTime() -
+          new Date(a.modifiedDate || a.lastModifiedDate || a.recordedDate).getTime()
+      )
+      .slice(0, limit);
+
+    return NextResponse.json({
+      total: auditTrail.length,
+      filters: {
+        type: filterType || "ALL",
+        dateRange: startDate && endDate ? `${startDate} to ${endDate}` : "All time"
+      },
+      auditTrail
     });
-
-    return NextResponse.json({ message: "Audit log recorded", id });
-  } catch (error: unknown) {
-    console.error("Create mark audit log error:", error);
+  } catch (error: any) {
+    console.error("Audit trail fetch error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create audit log" },
+      { error: error.message || "Failed to fetch audit trail" },
       { status: 500 }
     );
   }

@@ -1,14 +1,18 @@
-// Feature flags — expand this map as features are gated by subscription tier
-const ENABLED_FEATURES: Record<string, boolean> = {
-  AI: false,
-  REWARDS: true,
-  BRANDING: false,
-};
+import Subscription from "@/app/models/Subscription";
 
 export async function hasFeature(
   schoolId: string,
   feature: "AI" | "REWARDS" | "BRANDING"
 ) {
-  void schoolId; // future: check school's subscription tier from DB
-  return ENABLED_FEATURES[feature] ?? false;
+  const sub = await Subscription.findOne({
+    schoolId,
+    status: "ACTIVE"
+  });
+
+  if (!sub) return false;
+
+  if (sub.plan === "ENTERPRISE") return true;
+  if (sub.plan === "PRO" && feature !== "BRANDING") return true;
+
+  return false;
 }

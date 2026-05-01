@@ -1,54 +1,48 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: ITokenPayload | null = verifyToken(token || "");
+    const admin: any = verifyToken(token || "");
 
     if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const { termId } = await req.json();
+
     if (!termId) {
-      return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Term ID is required" },
+        { status: 400 }
+      );
     }
 
-    const now = new Date();
-    const updated = await d1
-      .update(terms)
-      .set({ isClosed: true, isCurrent: false, updatedAt: now })
-      .where(and(eq(terms.id, termId), eq(terms.schoolId, admin.schoolId)))
-      .returning({ id: terms.id });
+    const term = await Term.findById(termId);
 
-    if (!updated.length) {
-      return NextResponse.json({ error: "Term not found" }, { status: 404 });
+    if (!term || term.schoolId.toString() !== admin.schoolId) {
+      return NextResponse.json(
+        { error: "Term not found" },
+        { status: 404 }
+      );
     }
 
-    invalidateServerCacheByPrefix(`terms:list:${admin.schoolId}:`);
-    invalidateServerCacheByPrefix(`admin:stats:${admin.schoolId}`);
-    invalidateServerCacheByPrefix(`reports:list:${admin.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:dashboard:${admin.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:class-ranking:${admin.schoolId}:`);
+    term.isClosed = true;
+    term.isActive = false; // Close term also deactivates it
+    await term.save();
 
     return NextResponse.json({
       message: "Term closed successfully. No further edits allowed.",
-      termId: updated[0].id,
+      termId: term._id.toString()
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error("Close term error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to close term" },
+      { error: error.message || "Failed to close term" },
       { status: 500 }
     );
   }

@@ -224,7 +224,7 @@ GRADE: A (Excellent!)
 ### Stack
 - **Frontend**: Next.js 14, React 18, TypeScript, Tailwind CSS
 - **Backend**: Node.js, Express-style API routes
-- **Database**: Cloudflare D1 with Drizzle ORM
+- **Database**: MongoDB with Mongoose
 - **Auth**: JWT tokens, bcrypt for passwords
 
 ### File Structure
@@ -365,10 +365,10 @@ Clean code, reusable components, typed with TypeScript.
 
 ## 🚨 Important Notes
 
-1. **Cloudflare D1 Required**: Make sure Cloudflare D1 is running and connection string is correct in `.env` file
+1. **MongoDB Required**: Make sure MongoDB is running and connection string is correct in `.env` file
 2. **First Run**: Registration creates the first admin account
 3. **Token Expiry**: JWT tokens expire after 7 days - users need to login again
-4. **Data Persistence**: All data is stored in Cloudflare D1 - survives server restarts
+4. **Data Persistence**: All data is stored in MongoDB - survives server restarts
 5. **Permissions**: Teachers must be assigned before they can upload scores
 
 ---

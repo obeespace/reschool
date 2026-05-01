@@ -1,129 +1,144 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import DailyMark from "@/app/models/DailyMark";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import Student from "@/app/models/Students";
+import Term from "@/app/models/Term";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs, dailyMarks, teacherSubjectAssignments, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
+    const user: any = verifyToken(token || "");
 
-    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
+    if (!user || user.role !== "TEACHER") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const body = await req.json();
-    const studentId = String(body?.studentId || "").trim();
-    const classId = String(body?.classId || "").trim();
-    const subjectId = String(body?.subjectId || "").trim();
-    const assessmentType = String(body?.type || body?.assessmentType || "classwork").trim().toLowerCase();
-    const score = Number(body?.score);
-    const maxScore = Number(body?.maxScore || 10);
-    const feedbackNotes = String(body?.feedbackNotes || body?.notes || "").trim();
+    const studentId = typeof body.studentId === "string" ? body.studentId : "";
+    const subjectId = typeof body.subjectId === "string" ? body.subjectId : "";
+    const classId = typeof body.classId === "string" ? body.classId : "";
+    const academicYearId = typeof body.academicYearId === "string" ? body.academicYearId : "";
+    const requestedTermId = typeof body.termId === "string" ? body.termId : undefined;
 
-    if (!studentId || !classId || !subjectId || !Number.isFinite(score) || !Number.isFinite(maxScore)) {
-      return NextResponse.json(
-        { error: "studentId, classId, subjectId, score and maxScore are required" },
-        { status: 400 }
-      );
+    const rawAssessmentType = typeof body.assessmentType === "string"
+      ? body.assessmentType
+      : typeof body.type === "string"
+        ? body.type
+        : "";
+
+    const assessmentTypeMap: Record<string, string> = {
+      CLASSWORK: "CLASSWORK",
+      classwork: "CLASSWORK",
+      HOMEWORK: "HOMEWORK",
+      homework: "HOMEWORK",
+      EVALUATION: "EVALUATION",
+      evaluation: "EVALUATION",
+      TEST: "EVALUATION",
+      test: "EVALUATION",
+      EXTRACURRICULAR: "EVALUATION",
+      extracurricular: "EVALUATION",
+      EXAM: "EXAM",
+      exam: "EXAM"
+    };
+
+    const assessmentType = assessmentTypeMap[rawAssessmentType] || "";
+    const score = Number(body.score);
+    const maxScore = body.maxScore !== undefined ? Number(body.maxScore) : 10;
+    const feedbackNotes = typeof body.feedbackNotes === "string"
+      ? body.feedbackNotes
+      : typeof body.notes === "string"
+        ? body.notes
+        : "";
+
+    if (!studentId || !subjectId || !classId || !assessmentType || Number.isNaN(score) || !academicYearId) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    if (score < 0 || score > 100) {
+      return NextResponse.json({ error: "Score must be between 0 and 100" }, { status: 400 });
     }
 
-    if (user.role === "TEACHER") {
-      const assignmentRows = await d1
-        .select({ id: teacherSubjectAssignments.id })
-        .from(teacherSubjectAssignments)
-        .where(
-          and(
-            eq(teacherSubjectAssignments.schoolId, user.schoolId),
-            eq(teacherSubjectAssignments.teacherId, user.userId),
-            eq(teacherSubjectAssignments.classId, classId),
-            eq(teacherSubjectAssignments.subjectId, subjectId)
-          )
-        )
-        .limit(1);
-
-      if (!assignmentRows[0]) {
-        return NextResponse.json({ error: "Forbidden: subject/class not assigned" }, { status: 403 });
-      }
+    if (Number.isNaN(maxScore) || maxScore <= 0) {
+      return NextResponse.json({ error: "Max score must be greater than 0" }, { status: 400 });
     }
 
-    const termRows = await d1
-      .select({ id: terms.id, sessionId: terms.sessionId, isPaid: terms.isPaid, isClosed: terms.isClosed })
-      .from(terms)
-      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
+    const activeTerm = requestedTermId
+      ? await Term.findOne({ _id: requestedTermId, schoolId: user.schoolId })
+      : await Term.findOne({ schoolId: user.schoolId, isActive: true });
 
-    if (!termRows[0]) {
+    if (!activeTerm) {
       return NextResponse.json({ error: "No active term found" }, { status: 400 });
     }
 
-    if (!termRows[0].isPaid) {
-      return NextResponse.json({ error: "Current term is not paid" }, { status: 400 });
+    if (activeTerm.isClosed) {
+      return NextResponse.json({ error: "This term is closed. Cannot record marks." }, { status: 400 });
     }
 
-    if (termRows[0].isClosed) {
-      return NextResponse.json({ error: "Current term is closed" }, { status: 400 });
+    const teacherProfile = await TeacherProfile.findOne({
+      schoolId: user.schoolId,
+      userId: user.userId
+    });
+
+    if (!teacherProfile) {
+      return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
     }
 
-    const now = new Date();
-    const created = await d1.insert(dailyMarks).values({
-      id: crypto.randomUUID(),
+    const teachesSubjectInClass = (teacherProfile.subjectsAndClasses || []).some(
+      (assignment: any) =>
+        assignment?.subjectId?.toString() === subjectId &&
+        (assignment?.classIds || []).some((classObjectId: any) => classObjectId?.toString() === classId)
+    );
+
+    if (!teachesSubjectInClass) {
+      return NextResponse.json(
+        { error: "You can only upload marks for subjects/classes assigned to you" },
+        { status: 403 }
+      );
+    }
+
+    const student = await Student.findOne({
+      _id: studentId,
+      schoolId: user.schoolId,
+      currentClassId: classId
+    }).select("_id");
+
+    if (!student) {
+      return NextResponse.json({ error: "Student not found in selected class" }, { status: 404 });
+    }
+
+    const dailyMark = await DailyMark.create({
       schoolId: user.schoolId,
       studentId,
       subjectId,
       classId,
-      sectionId: null,
       teacherId: user.userId,
-      sessionId: termRows[0].sessionId,
-      termId: termRows[0].id,
       assessmentType,
       score,
       maxScore,
-      weightage: 1,
-      feedbackNotes: feedbackNotes || null,
-      modificationHistoryJson: "[]",
-      recordedDate: now,
+      feedbackNotes,
+      recordedDate: new Date(),
       recordedBy: user.userId,
-      lastModifiedBy: user.userId,
-      isDeleted: false,
-      createdAt: now,
-      updatedAt: now,
-    }).returning({ id: dailyMarks.id });
-
-    await d1.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      schoolId: user.schoolId,
-      actorId: user.userId,
-      action: "DAILY_MARK_CREATED",
-      metaJson: JSON.stringify({
-        markId: created[0]?.id || null,
-        studentId,
-        classId,
-        subjectId,
-        termId: termRows[0].id,
-        score,
-        maxScore,
-      }),
-      createdAt: now,
-      updatedAt: now,
+      academicYearId,
+      termId: activeTerm._id,
+      modificationHistory: []
     });
 
-    invalidateServerCacheByPrefix(`parents:class-ranking:${user.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:dashboard:${user.schoolId}:`);
-    invalidateServerCacheByPrefix(`reports:list:${user.schoolId}:`);
-
-    return NextResponse.json({ message: "Daily mark created", id: created[0]?.id || null });
-  } catch (error: unknown) {
-    console.error("Create daily mark error:", error);
+    return NextResponse.json({
+      message: "Daily mark recorded successfully",
+      dailyMark: {
+        id: dailyMark._id.toString(),
+        studentId,
+        score,
+        assessmentType
+      }
+    });
+  } catch (error: any) {
+    console.error("Error recording daily mark:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create daily mark" },
+      { error: error.message || "Failed to record daily mark" },
       { status: 500 }
     );
   }

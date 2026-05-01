@@ -3,7 +3,7 @@
 This guide walks you through testing the complete workflow of the ReSchool system.
 
 ## Prerequisites
-- Cloudflare D1 connection established
+- MongoDB connection established
 - JWT_SECRET environment variable set
 - School already registered with admin account
 

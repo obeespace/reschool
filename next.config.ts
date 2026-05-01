@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', 'sonner'],
   },
+  
+  // Use Turbopack for faster builds (Next.js 16 default)
+  turbopack: {},
 };
 
 export default nextConfig;

@@ -1,57 +1,75 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import Student from "@/app/models/Students";
+import "@/app/models/Class";
+import { verifyToken } from "@/app/utils/auth";
+import { allowRoles } from "@/app/utils/permissions";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { getParentWardData } from "@/app/utils/schoolRelationships";
 
 export async function GET(req: Request) {
   try {
+    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: ITokenPayload | null = verifyToken(token || "");
+    const user = verifyToken(token || "");
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!allowRoles(user, ["ADMIN"])) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const parentId = String(searchParams.get("parentId") || "").trim();
+    // Get parent ID from query parameter
+    const url = new URL(req.url);
+    const parentId = url.searchParams.get("parentId");
+
     if (!parentId) {
-      return NextResponse.json({ error: "parentId is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Parent ID is required" },
+        { status: 400 }
+      );
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    // Fetch parent
+    const parent = await User.findOne({
+      _id: parentId,
+      schoolId: user!.schoolId,
+      role: "PARENT",
+      isActive: true
+    }).select("fullName email");
+
+    if (!parent) {
+      return NextResponse.json(
+        { error: "Parent not found" },
+        { status: 404 }
+      );
     }
 
-    const parentRows = await d1
-      .select({ id: users.id, fullName: users.name, email: users.email })
-      .from(users)
-      .where(and(eq(users.schoolId, admin.schoolId), eq(users.id, parentId), eq(users.role, "PARENT")))
-      .limit(1);
-
-    if (!parentRows[0]) {
-      return NextResponse.json({ error: "Parent not found" }, { status: 404 });
-    }
-
-    const wards = await getParentWardData(d1, admin.schoolId, parentId);
+    // Fetch all wards (students) for this parent
+    const wards = await Student.find({
+      schoolId: user!.schoolId,
+      parentId: parentId
+    })
+      .populate("currentClassId", "name")
+      .select("fullName admissionNumber dateOfBirth gender currentClassId");
 
     return NextResponse.json({
-      parent: parentRows[0],
-      wards: wards.map((ward) => ({
-        id: ward.id,
-        fullName: ward.fullName,
-        admissionNumber: ward.admissionNumber,
-        dateOfBirth: ward.dateOfBirth,
-        gender: ward.gender,
-        className: ward.className,
+      parent: {
+        id: parent._id.toString(),
+        fullName: parent.fullName,
+        email: parent.email,
+      },
+      wards: wards.map(w => ({
+        id: w._id.toString(),
+        fullName: w.fullName,
+        admissionNumber: w.admissionNumber,
+        dateOfBirth: w.dateOfBirth,
+        gender: w.gender,
+        className: (w.currentClassId as any)?.name || "N/A"
       })),
+      wardCount: wards.length
     });
-  } catch (error: unknown) {
-    console.error("Parent details error:", error);
+  } catch (error: any) {
+    console.error("Fetch parent details error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch parent details" },
+      { error: error.message || "Failed to fetch parent details" },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -13,29 +13,6 @@ const DashboardLayout = dynamic(() => import("@/app/components/Sidebar"), { ssr:
 const StatCard = dynamic(() => import("@/app/components/UIComponents").then(mod => ({ default: mod.StatCard })));
 const PageHeader = dynamic(() => import("@/app/components/UIComponents").then(mod => ({ default: mod.PageHeader })));
 const LoadingSpinner = dynamic(() => import("@/app/components/UIComponents").then(mod => ({ default: mod.LoadingSpinner })));
-const Modal = dynamic(() => import("@/app/components/UIComponents").then(mod => ({ default: mod.Modal })));
-
-type ActiveTermInfo = {
-  academicYear: string;
-  term: number;
-  isPaid: boolean;
-  isClosed: boolean;
-  startDate: string;
-  endDate: string;
-} | null;
-
-type AnnouncementItem = {
-  id: string;
-  title: string;
-  message: string;
-  targetAudience: string;
-  createdAt: string;
-  className?: string;
-  postedBy: {
-    name: string;
-    role: string;
-  };
-};
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -48,7 +25,7 @@ export default function AdminDashboard() {
     subjects: 0,
   });
   const [schoolName, setSchoolName] = useState("");
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
   const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
@@ -56,20 +33,40 @@ export default function AdminDashboard() {
     targetAudience: "ALL"
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTerm, setActiveTerm] = useState<ActiveTermInfo>(null);
-  const [showSetupModal, setShowSetupModal] = useState(false);
-  const [isSetupSubmitting, setIsSetupSubmitting] = useState(false);
-  const [setupForm, setSetupForm] = useState({
-    name: "",
-    startDate: "",
-    endDate: ""
-  });
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    // Verify admin role
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      if (payload.role !== "ADMIN") {
+        router.push("/login");
+        return;
+      }
+    } catch (error) {
+      router.push("/login");
+      return;
+    }
+
+    // Load stats immediately
+    fetchStats();
+
+    // Defer announcement loading to not block UI
+    setTimeout(() => {
+      fetchAnnouncements();
+    }, 100);
+  }, [router]);
 
   const fetchStats = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      const data = await cachedApiGet<{ stats: typeof stats; schoolName: string; activeTerm: ActiveTermInfo }>({
+      const data = await cachedApiGet<{ stats: typeof stats; schoolName: string }>({
         key: `admin:stats:${token.slice(-12)}`,
         url: "/api/admin/stats",
         headers: { Authorization: `Bearer ${token}` },
@@ -77,12 +74,6 @@ export default function AdminDashboard() {
       });
       setStats(data.stats);
       setSchoolName(data.schoolName);
-      setActiveTerm(data.activeTerm || null);
-      setShowSetupModal(!data.activeTerm);
-      if (!data.activeTerm) {
-        router.push("/admin/setup");
-        return;
-      }
     } catch (error) {
       if (error instanceof ApiRequestError) {
         console.error("Error fetching stats:", {
@@ -111,7 +102,7 @@ export default function AdminDashboard() {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      const data = await cachedApiGet<{ announcements: AnnouncementItem[] }>({
+      const data = await cachedApiGet<{ announcements: any[] }>({
         key: `admin:announcements:${token.slice(-12)}`,
         url: "/api/announcements/list",
         headers: { Authorization: `Bearer ${token}` },
@@ -122,29 +113,6 @@ export default function AdminDashboard() {
       console.error("Error fetching announcements:", error);
     }
   }, []);
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-
-    // Verify admin role
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      if (payload.role !== "ADMIN") {
-        router.push("/login");
-        return;
-      }
-    } catch {
-      router.push("/login");
-      return;
-    }
-
-    // Load top-section and announcements in parallel to reduce time-to-interactive.
-    void Promise.allSettled([fetchStats(), fetchAnnouncements()]);
-  }, [fetchAnnouncements, fetchStats, router]);
 
   const handleCreateAnnouncement = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,44 +145,7 @@ export default function AdminDashboard() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [announcementForm, fetchAnnouncements]);
-
-  const handleCompleteSetup = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSetupSubmitting(true);
-
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/academic-years/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: setupForm.name,
-          startDate: setupForm.startDate,
-          endDate: setupForm.endDate,
-          setAsActive: true,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        toast.error(data.error || "Failed to complete setup");
-        return;
-      }
-
-      toast.success("Session and first term set successfully");
-      setShowSetupModal(false);
-      await fetchStats();
-    } catch (error) {
-      console.error("Setup error:", error);
-      toast.error("Failed to complete setup");
-    } finally {
-      setIsSetupSubmitting(false);
-    }
-  }, [setupForm, fetchStats]);
+  }, [fetchAnnouncements]);
 
   if (isLoading) {
     return (
@@ -375,16 +306,10 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between p-4 bg-linear-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
                 <div>
                   <div className="font-medium text-gray-900 text-sm">Current Academic Year</div>
-                  <div className="text-xs text-gray-600 mt-0.5">
-                    {activeTerm ? `${activeTerm.academicYear} - Term ${activeTerm.term}` : "Not configured yet"}
-                  </div>
+                  <div className="text-xs text-gray-600 mt-0.5">2024/2025 - First Term</div>
                 </div>
-                <span
-                  className={`px-3 py-1 text-white rounded-full text-xs font-semibold shadow-sm ${
-                    activeTerm ? "bg-green-500" : "bg-amber-500"
-                  }`}
-                >
-                  {activeTerm ? "Active" : "Setup Required"}
+                <span className="px-3 py-1 bg-green-500 text-white rounded-full text-xs font-semibold shadow-sm">
+                  Active
                 </span>
               </div>
 
@@ -557,66 +482,6 @@ export default function AdminDashboard() {
           </>
         )}
       </div>
-
-      <Modal
-        isOpen={showSetupModal}
-        onClose={() => {}}
-        title="Complete School Setup"
-      >
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Set your first academic session and active term to continue.
-        </div>
-
-        <form onSubmit={handleCompleteSetup} className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">Academic Session</label>
-            <input
-              type="text"
-              required
-              value={setupForm.name}
-              onChange={(e) => setSetupForm((prev) => ({ ...prev, name: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              placeholder="e.g. 2025/2026"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Session Start Date</label>
-              <input
-                type="date"
-                required
-                value={setupForm.startDate}
-                onChange={(e) => setSetupForm((prev) => ({ ...prev, startDate: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Session End Date</label>
-              <input
-                type="date"
-                required
-                value={setupForm.endDate}
-                onChange={(e) => setSetupForm((prev) => ({ ...prev, endDate: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-            The first term will be set as active automatically. You can switch terms later from Academic Years.
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSetupSubmitting}
-            className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-          >
-            {isSetupSubmitting ? "Saving setup..." : "Save Session and Continue"}
-          </button>
-        </form>
-      </Modal>
     </DashboardLayout>
   );
 }

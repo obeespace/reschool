@@ -36,14 +36,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-# cloudflare local state
-.wrangler/
-
-# opennext build output (built by CI, not committed)
-.open-next/
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-.env.local

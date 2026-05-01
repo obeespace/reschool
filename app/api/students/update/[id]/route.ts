@@ -1,45 +1,35 @@
-import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import Class from "@/app/models/Class";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import { verifyToken } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { students } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-
-function splitFullName(fullName: string): { firstName: string; lastName: string } {
-  const name = String(fullName || "").trim();
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) {
-    return { firstName: parts[0] || "Student", lastName: "" };
-  }
-  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
-}
 
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await connectDB();
+    const { id } = await params;
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
+    const user: any = verifyToken(token || "");
 
-    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { id } = await params;
-    if (!id) {
-      return NextResponse.json({ error: "Student id is required" }, { status: 400 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const body = await req.json();
-    const fullName = String(body?.fullName || "").trim();
-    const admissionNumber = String(body?.admissionNumber || "").trim();
-    const gender = body?.gender ? String(body.gender).trim() : null;
-    const dateOfBirth = body?.dateOfBirth ? new Date(body.dateOfBirth) : null;
+    const {
+      fullName,
+      admissionNumber,
+      dateOfBirth,
+      gender,
+      parentId,
+      isPrefect,
+      prefectTitle,
+      isSuspended,
+      suspendedReason
+    } = await req.json();
 
     if (!fullName || !admissionNumber) {
       return NextResponse.json(
@@ -48,35 +38,68 @@ export async function PUT(
       );
     }
 
-    const names = splitFullName(fullName);
-    const now = new Date();
+    const student = await Student.findOne({
+      _id: id,
+      schoolId: user.schoolId
+    });
 
-    await d1
-      .update(students)
-      .set({
-        firstName: names.firstName,
-        lastName: names.lastName,
-        admissionNumber,
-        gender,
-        dateOfBirth,
-        updatedAt: now,
-      })
-      .where(and(eq(students.id, id), eq(students.schoolId, user.schoolId)));
+    if (!student) {
+      return NextResponse.json(
+        { error: "Student not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check permissions for teachers
+    if (user.role === "TEACHER") {
+      const teacherProfile = await TeacherProfile.findOne({ userId: user.userId });
+      
+      if (!teacherProfile) {
+        return NextResponse.json(
+          { error: "Teacher profile not found" },
+          { status: 404 }
+        );
+      }
+
+      // Check if teacher is the class teacher of this student's class
+      if (!teacherProfile.classTeacherOf || 
+          teacherProfile.classTeacherOf.toString() !== student.currentClassId?.toString()) {
+        return NextResponse.json(
+          { error: "You can only edit students in your class" },
+          { status: 403 }
+        );
+      }
+    }
+
+    const updatePayload: any = {
+      fullName,
+      admissionNumber,
+      dateOfBirth: dateOfBirth || null,
+      gender: gender || null
+    };
+
+    if (user.role === "ADMIN") {
+      if (parentId !== undefined) updatePayload.parentId = parentId || null;
+      if (isPrefect !== undefined) updatePayload.isPrefect = !!isPrefect;
+      if (prefectTitle !== undefined) updatePayload.prefectTitle = prefectTitle || null;
+      if (isSuspended !== undefined) {
+        updatePayload.isSuspended = !!isSuspended;
+        updatePayload.suspendedAt = isSuspended ? new Date() : null;
+        updatePayload.suspendedReason = isSuspended ? (suspendedReason || null) : null;
+      }
+    }
+
+    const updatedStudent = await Student.findByIdAndUpdate(id, updatePayload, { new: true });
 
     return NextResponse.json({
       message: "Student updated successfully",
-      student: {
-        id,
-        fullName,
-        admissionNumber,
-        gender,
-        dateOfBirth,
-      },
+      student: updatedStudent
     });
-  } catch (error: unknown) {
-    console.error("Update student error:", error);
+
+  } catch (error) {
+    console.error("Error updating student:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update student" },
+      { error: "Failed to update student" },
       { status: 500 }
     );
   }
