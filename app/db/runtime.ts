@@ -1,32 +1,20 @@
-import {
-  createD1Client,
-  type D1DatabaseBinding,
-  type D1Client,
-} from "@/app/db/client";
+import { createDbClient, type D1Client } from "@/app/db/client";
 
-type GlobalWithD1 = typeof globalThis & {
-  DB?: D1DatabaseBinding;
-  __D1_DB__?: D1DatabaseBinding;
-};
+export type { D1Client };
 
-function resolveD1Database(): D1DatabaseBinding | null {
-  const g = globalThis as GlobalWithD1;
-  return g.DB ?? g.__D1_DB__ ?? null;
-}
+let _client: D1Client | null = null;
 
 export function getD1Client(): D1Client {
-  const directDb = resolveD1Database();
-  if (directDb) {
-    return createD1Client(directDb);
+  if (!_client) {
+    _client = createDbClient();
   }
-
-  throw new Error("D1 database binding not configured.");
+  return _client;
 }
 
 export function getOptionalD1Client(): D1Client | null {
-  const db = resolveD1Database();
-  if (db) {
-    return createD1Client(db);
+  try {
+    return getD1Client();
+  } catch {
+    return null;
   }
-  return null;
 }

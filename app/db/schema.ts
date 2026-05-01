@@ -1,23 +1,25 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
+  doublePrecision,
   index,
   integer,
-  real,
-  sqliteTable,
+  pgTable,
   text,
+  timestamp,
   uniqueIndex,
-} from "drizzle-orm/sqlite-core";
+} from "drizzle-orm/pg-core";
 
-export const schools = sqliteTable("schools", {
+export const schools = pgTable("schools", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   address: text("address"),
   logoUrl: text("logo_url"),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
 });
 
-export const users = sqliteTable(
+export const users = pgTable(
   "users",
   {
     id: text("id").primaryKey(),
@@ -28,8 +30,8 @@ export const users = sqliteTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     role: text("role").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     userSchoolEmailUnique: uniqueIndex("users_school_email_unique").on(
@@ -40,7 +42,7 @@ export const users = sqliteTable(
   })
 );
 
-export const sessions = sqliteTable(
+export const sessions = pgTable(
   "sessions",
   {
     id: text("id").primaryKey(),
@@ -48,11 +50,11 @@ export const sessions = sqliteTable(
       .notNull()
       .references(() => schools.id, { onDelete: "cascade" }),
     year: text("year").notNull(),
-    startDate: integer("start_date", { mode: "timestamp_ms" }).notNull(),
-    endDate: integer("end_date", { mode: "timestamp_ms" }).notNull(),
-    isCurrent: integer("is_current", { mode: "boolean" }).notNull().default(false),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    startDate: timestamp("start_date", { mode: "date" }).notNull(),
+    endDate: timestamp("end_date", { mode: "date" }).notNull(),
+    isCurrent: boolean("is_current").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     sessionsSchoolYearUnique: uniqueIndex("sessions_school_year_unique").on(
@@ -61,7 +63,7 @@ export const sessions = sqliteTable(
     ),
     sessionsCurrentPerSchoolUnique: uniqueIndex("sessions_current_per_school_unique")
       .on(table.schoolId)
-      .where(sql`${table.isCurrent} = 1`),
+      .where(sql`${table.isCurrent} = true`),
     sessionsSchoolCurrentIdx: index("sessions_school_current_idx").on(
       table.schoolId,
       table.isCurrent
@@ -69,7 +71,7 @@ export const sessions = sqliteTable(
   })
 );
 
-export const terms = sqliteTable(
+export const terms = pgTable(
   "terms",
   {
     id: text("id").primaryKey(),
@@ -81,15 +83,15 @@ export const terms = sqliteTable(
       .references(() => sessions.id, { onDelete: "cascade" }),
     termNumber: integer("term_number").notNull(),
     name: text("name").notNull(),
-    startDate: integer("start_date", { mode: "timestamp_ms" }).notNull(),
-    endDate: integer("end_date", { mode: "timestamp_ms" }).notNull(),
-    isCurrent: integer("is_current", { mode: "boolean" }).notNull().default(false),
-    isPaid: integer("is_paid", { mode: "boolean" }).notNull().default(false),
-    isClosed: integer("is_closed", { mode: "boolean" }).notNull().default(false),
-    paymentDate: integer("payment_date", { mode: "timestamp_ms" }),
+    startDate: timestamp("start_date", { mode: "date" }).notNull(),
+    endDate: timestamp("end_date", { mode: "date" }).notNull(),
+    isCurrent: boolean("is_current").notNull().default(false),
+    isPaid: boolean("is_paid").notNull().default(false),
+    isClosed: boolean("is_closed").notNull().default(false),
+    paymentDate: timestamp("payment_date", { mode: "date" }),
     paymentReference: text("payment_reference"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     termsSessionNameUnique: uniqueIndex("terms_session_name_unique").on(
@@ -102,7 +104,7 @@ export const terms = sqliteTable(
     ),
     termsCurrentPerSessionUnique: uniqueIndex("terms_current_per_session_unique")
       .on(table.sessionId)
-      .where(sql`${table.isCurrent} = 1`),
+      .where(sql`${table.isCurrent} = true`),
     termsSchoolSessionCurrentIdx: index("terms_school_session_current_idx").on(
       table.schoolId,
       table.sessionId,
@@ -111,7 +113,7 @@ export const terms = sqliteTable(
   })
 );
 
-export const classes = sqliteTable(
+export const classes = pgTable(
   "classes",
   {
     id: text("id").primaryKey(),
@@ -120,8 +122,8 @@ export const classes = sqliteTable(
       .references(() => schools.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     level: text("level").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     classesSchoolNameUnique: uniqueIndex("classes_school_name_unique").on(
@@ -135,7 +137,7 @@ export const classes = sqliteTable(
   })
 );
 
-export const classArms = sqliteTable(
+export const classArms = pgTable(
   "class_arms",
   {
     id: text("id").primaryKey(),
@@ -143,8 +145,8 @@ export const classArms = sqliteTable(
       .notNull()
       .references(() => schools.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     classArmsSchoolNameUnique: uniqueIndex("class_arms_school_name_unique").on(
@@ -155,7 +157,7 @@ export const classArms = sqliteTable(
   })
 );
 
-export const sections = sqliteTable(
+export const sections = pgTable(
   "sections",
   {
     id: text("id").primaryKey(),
@@ -169,8 +171,8 @@ export const sections = sqliteTable(
       .notNull()
       .references(() => classArms.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     sectionsSchoolClassArmUnique: uniqueIndex("sections_school_class_arm_unique").on(
@@ -187,7 +189,7 @@ export const sections = sqliteTable(
   })
 );
 
-export const admissionSettings = sqliteTable(
+export const admissionSettings = pgTable(
   "admission_settings",
   {
     id: text("id").primaryKey(),
@@ -197,8 +199,8 @@ export const admissionSettings = sqliteTable(
     prefix: text("prefix").notNull(),
     yearFormat: text("year_format").notNull(),
     numberLength: integer("number_length").notNull().default(3),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     admissionSettingsSchoolUnique: uniqueIndex("admission_settings_school_unique").on(
@@ -207,7 +209,7 @@ export const admissionSettings = sqliteTable(
   })
 );
 
-export const students = sqliteTable(
+export const students = pgTable(
   "students",
   {
     id: text("id").primaryKey(),
@@ -218,9 +220,9 @@ export const students = sqliteTable(
     lastName: text("last_name").notNull(),
     admissionNumber: text("admission_number").notNull(),
     gender: text("gender"),
-    dateOfBirth: integer("date_of_birth", { mode: "timestamp_ms" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    dateOfBirth: timestamp("date_of_birth", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     studentsSchoolAdmissionUnique: uniqueIndex("students_school_admission_unique").on(
@@ -234,7 +236,7 @@ export const students = sqliteTable(
   })
 );
 
-export const subjects = sqliteTable(
+export const subjects = pgTable(
   "subjects",
   {
     id: text("id").primaryKey(),
@@ -242,8 +244,8 @@ export const subjects = sqliteTable(
       .notNull()
       .references(() => schools.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     subjectsSchoolNameUnique: uniqueIndex("subjects_school_name_unique").on(
@@ -253,7 +255,7 @@ export const subjects = sqliteTable(
   })
 );
 
-export const classSubjects = sqliteTable(
+export const classSubjects = pgTable(
   "class_subjects",
   {
     id: text("id").primaryKey(),
@@ -266,8 +268,8 @@ export const classSubjects = sqliteTable(
     subjectId: text("subject_id")
       .notNull()
       .references(() => subjects.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     classSubjectsUnique: uniqueIndex("class_subjects_unique").on(
@@ -286,7 +288,7 @@ export const classSubjects = sqliteTable(
   })
 );
 
-export const parentWardLinks = sqliteTable(
+export const parentWardLinks = pgTable(
   "parent_ward_links",
   {
     id: text("id").primaryKey(),
@@ -300,9 +302,9 @@ export const parentWardLinks = sqliteTable(
       .notNull()
       .references(() => students.id, { onDelete: "cascade" }),
     relationship: text("relationship").notNull().default("GUARDIAN"),
-    isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     parentWardLinksUnique: uniqueIndex("parent_ward_links_unique").on(
@@ -321,7 +323,7 @@ export const parentWardLinks = sqliteTable(
   })
 );
 
-export const teacherClassAssignments = sqliteTable(
+export const teacherClassAssignments = pgTable(
   "teacher_class_assignments",
   {
     id: text("id").primaryKey(),
@@ -334,8 +336,8 @@ export const teacherClassAssignments = sqliteTable(
     classId: text("class_id")
       .notNull()
       .references(() => classes.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     teacherClassTeacherUnique: uniqueIndex("teacher_class_teacher_unique").on(
@@ -353,7 +355,7 @@ export const teacherClassAssignments = sqliteTable(
   })
 );
 
-export const teacherSubjectAssignments = sqliteTable(
+export const teacherSubjectAssignments = pgTable(
   "teacher_subject_assignments",
   {
     id: text("id").primaryKey(),
@@ -369,8 +371,8 @@ export const teacherSubjectAssignments = sqliteTable(
     classId: text("class_id")
       .notNull()
       .references(() => classes.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     teacherSubjectAssignmentsUnique: uniqueIndex("teacher_subject_assignments_unique").on(
@@ -394,7 +396,7 @@ export const teacherSubjectAssignments = sqliteTable(
   })
 );
 
-export const enrollments = sqliteTable(
+export const enrollments = pgTable(
   "enrollments",
   {
     id: text("id").primaryKey(),
@@ -414,8 +416,8 @@ export const enrollments = sqliteTable(
     termId: text("term_id")
       .notNull()
       .references(() => terms.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     enrollmentsUnique: uniqueIndex("enrollments_unique").on(
@@ -445,7 +447,7 @@ export const enrollments = sqliteTable(
   })
 );
 
-export const results = sqliteTable(
+export const results = pgTable(
   "results",
   {
     id: text("id").primaryKey(),
@@ -468,9 +470,9 @@ export const results = sqliteTable(
     termId: text("term_id")
       .notNull()
       .references(() => terms.id, { onDelete: "cascade" }),
-    score: real("score").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    score: doublePrecision("score").notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     resultsUnique: uniqueIndex("results_unique").on(
@@ -514,7 +516,7 @@ export const results = sqliteTable(
   })
 );
 
-export const dailyMarks = sqliteTable(
+export const dailyMarks = pgTable(
   "daily_marks",
   {
     id: text("id").primaryKey(),
@@ -541,19 +543,19 @@ export const dailyMarks = sqliteTable(
       .notNull()
       .references(() => terms.id, { onDelete: "cascade" }),
     assessmentType: text("assessment_type").notNull(),
-    score: real("score").notNull(),
-    maxScore: real("max_score").notNull(),
-    weightage: real("weightage").notNull(),
+    score: doublePrecision("score").notNull(),
+    maxScore: doublePrecision("max_score").notNull(),
+    weightage: doublePrecision("weightage").notNull(),
     feedbackNotes: text("feedback_notes"),
     modificationHistoryJson: text("modification_history_json").notNull().default("[]"),
-    recordedDate: integer("recorded_date", { mode: "timestamp_ms" }).notNull(),
+    recordedDate: timestamp("recorded_date", { mode: "date" }).notNull(),
     recordedBy: text("recorded_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     lastModifiedBy: text("last_modified_by").references(() => users.id, { onDelete: "set null" }),
-    isDeleted: integer("is_deleted", { mode: "boolean" }).notNull().default(false),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    isDeleted: boolean("is_deleted").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     dailyMarksTermIdx: index("daily_marks_term_idx").on(
@@ -575,7 +577,7 @@ export const dailyMarks = sqliteTable(
   })
 );
 
-export const attendanceRecords = sqliteTable(
+export const attendanceRecords = pgTable(
   "attendance_records",
   {
     id: text("id").primaryKey(),
@@ -595,15 +597,15 @@ export const attendanceRecords = sqliteTable(
     termId: text("term_id")
       .notNull()
       .references(() => terms.id, { onDelete: "cascade" }),
-    attendanceDate: integer("attendance_date", { mode: "timestamp_ms" }).notNull(),
+    attendanceDate: timestamp("attendance_date", { mode: "date" }).notNull(),
     status: text("status").notNull(),
     excuseReason: text("excuse_reason"),
     markedBy: text("marked_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    markedTime: integer("marked_time", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    markedTime: timestamp("marked_time", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     attendanceUnique: uniqueIndex("attendance_unique").on(
@@ -626,7 +628,7 @@ export const attendanceRecords = sqliteTable(
   })
 );
 
-export const teacherRemarks = sqliteTable(
+export const teacherRemarks = pgTable(
   "teacher_remarks",
   {
     id: text("id").primaryKey(),
@@ -656,9 +658,9 @@ export const teacherRemarks = sqliteTable(
     remarkedBy: text("remarked_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    remarkedDate: integer("remarked_date", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    remarkedDate: timestamp("remarked_date", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     teacherRemarksIdx: index("teacher_remarks_idx").on(
@@ -676,7 +678,7 @@ export const teacherRemarks = sqliteTable(
   })
 );
 
-export const reportCards = sqliteTable(
+export const reportCards = pgTable(
   "report_cards",
   {
     id: text("id").primaryKey(),
@@ -700,21 +702,21 @@ export const reportCards = sqliteTable(
     termNumber: integer("term_number").notNull(),
     yearLabel: text("year_label").notNull(),
     subjectScoresJson: text("subject_scores_json").notNull().default("[]"),
-    totalScore: real("total_score").notNull().default(0),
-    averageScore: real("average_score").notNull().default(0),
+    totalScore: doublePrecision("total_score").notNull().default(0),
+    averageScore: doublePrecision("average_score").notNull().default(0),
     classRanking: integer("class_ranking"),
     classSize: integer("class_size"),
     overallRemark: text("overall_remark"),
-    attendancePercentage: real("attendance_percentage"),
+    attendancePercentage: doublePrecision("attendance_percentage"),
     comportmentJson: text("comportment_json").notNull().default("{}"),
     promotionStatus: text("promotion_status"),
     repeatReason: text("repeat_reason"),
-    generatedDate: integer("generated_date", { mode: "timestamp_ms" }).notNull(),
+    generatedDate: timestamp("generated_date", { mode: "date" }).notNull(),
     approvedBy: text("approved_by").references(() => users.id, { onDelete: "set null" }),
     printCount: integer("print_count").notNull().default(0),
     printHistoryJson: text("print_history_json").notNull().default("[]"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     reportCardsUnique: uniqueIndex("report_cards_unique").on(
@@ -730,7 +732,7 @@ export const reportCards = sqliteTable(
   })
 );
 
-export const notifications = sqliteTable(
+export const notifications = pgTable(
   "notifications",
   {
     id: text("id").primaryKey(),
@@ -746,12 +748,12 @@ export const notifications = sqliteTable(
     message: text("message").notNull(),
     actionUrl: text("action_url"),
     deliveryChannelsJson: text("delivery_channels_json").notNull().default('["IN_APP"]'),
-    deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),
-    readAt: integer("read_at", { mode: "timestamp_ms" }),
+    deliveredAt: timestamp("delivered_at", { mode: "date" }),
+    readAt: timestamp("read_at", { mode: "date" }),
     priority: text("priority").notNull().default("NORMAL"),
-    createdDate: integer("created_date", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdDate: timestamp("created_date", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     notificationsRecipientIdx: index("notifications_recipient_idx").on(
@@ -767,7 +769,7 @@ export const notifications = sqliteTable(
   })
 );
 
-export const announcements = sqliteTable(
+export const announcements = pgTable(
   "announcements",
   {
     id: text("id").primaryKey(),
@@ -782,9 +784,9 @@ export const announcements = sqliteTable(
     classId: text("class_id").references(() => classes.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     message: text("message").notNull(),
-    createdDate: integer("created_date", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdDate: timestamp("created_date", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     announcementsSchoolCreatedIdx: index("announcements_school_created_idx").on(
@@ -804,7 +806,7 @@ export const announcements = sqliteTable(
   })
 );
 
-export const announcementReads = sqliteTable(
+export const announcementReads = pgTable(
   "announcement_reads",
   {
     id: text("id").primaryKey(),
@@ -817,9 +819,9 @@ export const announcementReads = sqliteTable(
     readerId: text("reader_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    readAt: integer("read_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    readAt: timestamp("read_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     announcementReadsUnique: uniqueIndex("announcement_reads_unique").on(
@@ -835,7 +837,7 @@ export const announcementReads = sqliteTable(
   })
 );
 
-export const studentLifecycleRecords = sqliteTable(
+export const studentLifecycleRecords = pgTable(
   "student_lifecycle_records",
   {
     id: text("id").primaryKey(),
@@ -845,19 +847,19 @@ export const studentLifecycleRecords = sqliteTable(
     studentId: text("student_id")
       .notNull()
       .references(() => students.id, { onDelete: "cascade" }),
-    admissionDate: integer("admission_date", { mode: "timestamp_ms" }),
+    admissionDate: timestamp("admission_date", { mode: "date" }),
     admissionClass: text("admission_class"),
     currentClass: text("current_class"),
     currentStatus: text("current_status").notNull().default("ACTIVE"),
     milestonesJson: text("milestones_json").notNull().default("[]"),
-    graduationDate: integer("graduation_date", { mode: "timestamp_ms" }),
+    graduationDate: timestamp("graduation_date", { mode: "date" }),
     certificateId: text("certificate_id"),
     certificationStatus: text("certification_status").notNull().default("PENDING"),
     suspensionCount: integer("suspension_count").notNull().default(0),
     withdrawalReason: text("withdrawal_reason"),
     overallPerformanceJson: text("overall_performance_json").notNull().default("{}"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     studentLifecycleUnique: uniqueIndex("student_lifecycle_unique").on(
@@ -871,7 +873,7 @@ export const studentLifecycleRecords = sqliteTable(
   })
 );
 
-export const certificates = sqliteTable(
+export const certificates = pgTable(
   "certificates",
   {
     id: text("id").primaryKey(),
@@ -887,18 +889,18 @@ export const certificates = sqliteTable(
     graduationYear: integer("graduation_year"),
     classLevel: text("class_level").notNull(),
     certificateNumber: text("certificate_number").notNull(),
-    issuedDate: integer("issued_date", { mode: "timestamp_ms" }),
+    issuedDate: timestamp("issued_date", { mode: "date" }),
     signatureApprovalStatus: text("signature_approval_status").notNull().default("PENDING"),
     signedByPrincipalId: text("signed_by_principal_id").references(() => users.id, { onDelete: "set null" }),
     signedByPrincipalName: text("signed_by_principal_name"),
-    signatureDate: integer("signature_date", { mode: "timestamp_ms" }),
+    signatureDate: timestamp("signature_date", { mode: "date" }),
     reprintCount: integer("reprint_count").notNull().default(0),
     reprintHistoryJson: text("reprint_history_json").notNull().default("[]"),
     digitalHash: text("digital_hash"),
     qrCode: text("qr_code"),
-    isVerifiable: integer("is_verifiable", { mode: "boolean" }).notNull().default(false),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    isVerifiable: boolean("is_verifiable").notNull().default(false),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     certificatesStudentUnique: uniqueIndex("certificates_student_unique").on(
@@ -912,7 +914,7 @@ export const certificates = sqliteTable(
   })
 );
 
-export const auditLogs = sqliteTable(
+export const auditLogs = pgTable(
   "audit_logs",
   {
     id: text("id").primaryKey(),
@@ -922,8 +924,8 @@ export const auditLogs = sqliteTable(
     actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
     action: text("action").notNull(),
     metaJson: text("meta_json"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     auditSchoolCreatedIdx: index("audit_school_created_idx").on(
@@ -933,7 +935,7 @@ export const auditLogs = sqliteTable(
   })
 );
 
-export const teacherRewardWinners = sqliteTable(
+export const teacherRewardWinners = pgTable(
   "teacher_reward_winners",
   {
     id: text("id").primaryKey(),
@@ -947,14 +949,14 @@ export const teacherRewardWinners = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     rank: integer("rank").notNull(),
-    points: real("points").notNull(),
+    points: doublePrecision("points").notNull(),
     breakdownJson: text("breakdown_json").notNull().default("{}"),
     finalizedBy: text("finalized_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     note: text("note"),
-    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
   (table) => ({
     teacherRewardTermTeacherUnique: uniqueIndex("teacher_reward_term_teacher_unique").on(
