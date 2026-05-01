@@ -24,17 +24,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Stub @libsql/client workerd entry (missing file in package)
-        run: |
-          REAL_LIBSQL=$(readlink -f node_modules/@libsql/client)
-          mkdir -p "$REAL_LIBSQL/lib-esm"
-          printf 'export function createClient() { throw new Error("@libsql/client is not available in Cloudflare Workers"); }\n' > "$REAL_LIBSQL/lib-esm/web.js"
-          echo "Stubbed: $REAL_LIBSQL/lib-esm/web.js"
-
       - name: Build for Cloudflare
         run: pnpm run build:cf
-        env:
-          CLOUDFLARE_BUILD: "1"
 
       - name: Deploy to Cloudflare Workers
         run: pnpm exec wrangler deploy
