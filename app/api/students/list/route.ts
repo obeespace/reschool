@@ -1,53 +1,65 @@
-import connectDB from "@/app/utils/db";
-import Student from "@/app/models/Students";
-import "@/app/models/Class";
-import "@/app/models/User";
-import { verifyToken } from "@/app/utils/auth";
-import { allowRoles } from "@/app/utils/permissions";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { enrollments, sections, students, terms } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!allowRoles(user, ["ADMIN"])) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const students = await Student.find({ schoolId: user!.schoolId })
-      .populate("currentClassId", "level arm")
-      .populate("parentId", "fullName email")
-      .sort({ admissionNumber: 1 });
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
+
+    const rows = await d1
+      .select()
+      .from(students)
+      .where(eq(students.schoolId, user.schoolId));
+
+    const currentTermRows = await d1
+      .select({ id: terms.id })
+      .from(terms)
+      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+      .limit(1);
+
+    const enrollmentMap = new Map<string, string>();
+    const currentTermId = currentTermRows[0]?.id;
+    if (currentTermId) {
+      const enrollmentRows = await d1
+        .select({ studentId: enrollments.studentId, sectionName: sections.name })
+        .from(enrollments)
+        .leftJoin(sections, eq(enrollments.sectionId, sections.id))
+        .where(and(eq(enrollments.schoolId, user.schoolId), eq(enrollments.termId, currentTermId)));
+
+      for (const row of enrollmentRows) {
+        if (row.sectionName) {
+          enrollmentMap.set(row.studentId, row.sectionName);
+        }
+      }
+    }
 
     return NextResponse.json({
-      students: students.map(student => ({
-        id: student._id.toString(),
-        fullName: student.fullName,
-        admissionNumber: student.admissionNumber,
-        currentClass: student.currentClassId ? {
-          level: (student.currentClassId as any).level,
-          arm: (student.currentClassId as any).arm
-        } : null,
-        dateOfBirth: student.dateOfBirth,
-        gender: student.gender,
-        parent: student.parentId ? {
-          id: (student.parentId as any)._id?.toString?.() || null,
-          fullName: (student.parentId as any).fullName,
-          email: (student.parentId as any).email
-        } : null,
-        isPrefect: student.isPrefect,
-        prefectTitle: student.prefectTitle || null,
-        isSuspended: student.isSuspended,
-        suspendedAt: student.suspendedAt || null,
-        suspendedReason: student.suspendedReason || null
-      }))
+      students: rows.map((row) => ({
+        _id: row.id,
+        id: row.id,
+        fullName: `${row.firstName} ${row.lastName}`.trim(),
+        admissionNumber: row.admissionNumber,
+        dateOfBirth: row.dateOfBirth,
+        gender: row.gender,
+        currentClass: enrollmentMap.get(row.id) || null,
+      })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Fetch students error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch students" },
+      { error: error instanceof Error ? error.message : "Failed to fetch students" },
       { status: 500 }
     );
   }

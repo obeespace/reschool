@@ -1,46 +1,61 @@
-import connectDB from "@/app/utils/db";
-import Announcement from "@/app/models/Announcements";
-import Class from "@/app/models/Class";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { announcements } from "@/app/db/schema";
 
 export async function POST(req: Request) {
-  await connectDB();
-  const token = req.headers.get("authorization")?.split(" ")[1];
-  const admin: any = verifyToken(token || "");
+  try {
+    const token = req.headers.get("authorization")?.split(" ")[1];
+    const admin: ITokenPayload | null = verifyToken(token || "");
 
-  if (!admin || admin.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  const { title, message, targetAudience } = await req.json();
-
-  // Validate targetAudience
-  const validAudiences = ["ALL", "TEACHERS_AND_PARENTS", "TEACHERS_ONLY", "PARENTS_ONLY"];
-  if (!validAudiences.includes(targetAudience)) {
-    return NextResponse.json({ 
-      error: "Invalid target audience. Must be one of: ALL, TEACHERS_AND_PARENTS, TEACHERS_ONLY, PARENTS_ONLY" 
-    }, { status: 400 });
-  }
-
-  const announcement = await Announcement.create({
-    schoolId: admin.schoolId,
-    classId: null, // General announcement
-    title,
-    message,
-    postedBy: admin.userId,
-    announcementType: "GENERAL",
-    targetAudience
-  });
-
-  return NextResponse.json({ 
-    success: true,
-    announcementId: announcement._id,
-    announcement: {
-      title: announcement.title,
-      message: announcement.message,
-      targetAudience: announcement.targetAudience,
-      createdAt: announcement.createdAt
+    if (!admin || admin.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
-  });
+
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
+
+    const body = await req.json();
+    const title = String(body?.title || "").trim();
+    const message = String(body?.message || "").trim();
+    const targetAudience =
+      body?.targetAudience === "TEACHERS_ONLY" || body?.targetAudience === "PARENTS_ONLY"
+        ? body.targetAudience
+        : "ALL";
+
+    if (!title || !message) {
+      return NextResponse.json({ error: "Title and message are required" }, { status: 400 });
+    }
+
+    const now = new Date();
+    const announcementId = crypto.randomUUID();
+
+    await d1.insert(announcements).values({
+      id: announcementId,
+      schoolId: admin.schoolId,
+      createdBy: admin.userId,
+      announcementType: "GENERAL",
+      targetAudience,
+      classId: null,
+      title,
+      message,
+      createdDate: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return NextResponse.json({
+      message: "Announcement created successfully",
+      announcementId,
+      storageMode: "announcements-table",
+    });
+  } catch (error: unknown) {
+    console.error("Create admin announcement error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create announcement" },
+      { status: 500 }
+    );
+  }
 }

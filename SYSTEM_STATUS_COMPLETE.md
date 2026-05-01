@@ -375,12 +375,12 @@ Feature                              Status    Coverage
 **6. Data Integrity**
 - [ ] Migration script: Create StudentLifecycleRecord for existing students
 - [ ] Data validation: Ensure all marks have modificationHistory
-- [ ] Index verification: Run MongoDB index check
+- [ ] Index verification: Run Cloudflare D1 index check
 
 **7. Performance Optimization**
 - [ ] Add Redis caching for leaderboard (monthly refresh)
 - [ ] Implement cursor-based pagination for large datasets
-- [ ] Add MongoDB aggregation pipeline optimization
+- [ ] Add Cloudflare D1 aggregation pipeline optimization
 
 ### Low Priority
 
@@ -461,7 +461,7 @@ Security:
 ✅ JWT authentication: All routes
 ✅ School scoping: All queries
 ✅ Role-based access: Enforced
-✅ SQL injection: Not applicable (Mongoose)
+✅ SQL injection: Not applicable (Drizzle ORM)
 ✅ XSS protection: Next.js built-in
 
 Documentation:

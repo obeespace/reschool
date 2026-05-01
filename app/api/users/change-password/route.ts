@@ -1,65 +1,64 @@
-import connectDB from "@/app/utils/db";
-import User from "@/app/models/User";
-import { verifyToken } from "@/app/utils/auth";
 import bcrypt from "bcryptjs";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { users } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function PUT(req: Request) {
   try {
-    await connectDB();
-
-    // Verify user is authenticated
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const payload = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!payload) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { oldPassword, newPassword } = await req.json();
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    if (!oldPassword || !newPassword) {
+    const body = await req.json();
+    const oldPassword = String(body?.oldPassword || "");
+    const newPassword = String(body?.newPassword || "");
+
+    if (!oldPassword || newPassword.length < 6) {
       return NextResponse.json(
-        { error: "Old password and new password are required" },
+        { error: "oldPassword and newPassword (min 6 chars) are required" },
         { status: 400 }
       );
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json(
-        { error: "New password must be at least 6 characters long" },
-        { status: 400 }
-      );
-    }
+    const rows = await d1
+      .select({ id: users.id, passwordHash: users.passwordHash })
+      .from(users)
+      .where(and(eq(users.id, user.userId), eq(users.schoolId, user.schoolId)))
+      .limit(1);
 
-    // Find user and verify old password
-    const user = await User.findById(payload.userId);
-    if (!user) {
+    const record = rows[0];
+    if (!record) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+    const isMatch = await bcrypt.compare(oldPassword, record.passwordHash);
     if (!isMatch) {
-      return NextResponse.json(
-        { error: "Old password is incorrect" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 });
     }
 
-    // Hash and update new password
-    const salt = await bcrypt.genSalt(10);
-    const newPasswordHash = await bcrypt.hash(newPassword, salt);
+    const now = new Date();
+    const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    user.passwordHash = newPasswordHash;
-    await user.save();
+    await d1
+      .update(users)
+      .set({ passwordHash, updatedAt: now })
+      .where(eq(users.id, user.userId));
 
-    return NextResponse.json({
-      message: "Password changed successfully"
-    });
-  } catch (error: any) {
+    return NextResponse.json({ message: "Password changed successfully" });
+  } catch (error: unknown) {
     console.error("Change password error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to change password" },
+      { error: error instanceof Error ? error.message : "Failed to change password" },
       { status: 500 }
     );
   }

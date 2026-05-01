@@ -1,66 +1,134 @@
-import connectDB from "@/app/utils/db";
-import Term from "@/app/models/Term";
-import Student from "@/app/models/Students";
-import StudentClassHistory from "@/app/models/StudentClassHistory";
-import "@/app/models/AcademicYear";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { sessions, terms } from "@/app/db/schema";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const parent: any = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!parent || parent.role !== "PARENT") {
+    if (!user || (user.role !== "PARENT" && user.role !== "ADMIN")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // Get all children of this parent
-    const students = await Student.find({
-      schoolId: parent.schoolId,
-      parentId: parent.userId
-    });
-
-    if (students.length === 0) {
-      return NextResponse.json({ terms: [] });
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    const studentIds = students.map((s) => s._id);
+    const [sessionRows, termRows] = await Promise.all([
+      d1
+        .select({
+          id: sessions.id,
+          year: sessions.year,
+          startDate: sessions.startDate,
+          endDate: sessions.endDate,
+          isCurrent: sessions.isCurrent,
+        })
+        .from(sessions)
+        .where(eq(sessions.schoolId, user.schoolId))
+        .orderBy(desc(sessions.startDate)),
+      d1
+        .select({
+          id: terms.id,
+          sessionId: terms.sessionId,
+          termNumber: terms.termNumber,
+          name: terms.name,
+          startDate: terms.startDate,
+          endDate: terms.endDate,
+          isCurrent: terms.isCurrent,
+          isClosed: terms.isClosed,
+        })
+        .from(terms)
+        .where(eq(terms.schoolId, user.schoolId))
+        .orderBy(asc(terms.termNumber)),
+    ]);
 
-    // Get unique academic years where these students have records
-    const classHistories = await StudentClassHistory.find({
-      schoolId: parent.schoolId,
-      studentId: { $in: studentIds }
-    }).distinct("academicYearId");
+    const termsBySession = new Map<string, Array<{
+      id: string;
+      termNumber: number;
+      name: string;
+      startDate: Date;
+      endDate: Date;
+      isCurrent: boolean;
+      isClosed: boolean;
+    }>>();
 
-    // Fetch all paid terms for these academic years (parents can only access paid terms)
-    const terms = await Term.find({
-      schoolId: parent.schoolId,
-      academicYearId: { $in: classHistories },
-      isPaid: true
-    })
-      .populate("academicYearId", "name")
-      .sort({ startDate: -1 });
-
-    return NextResponse.json({
-      terms: terms.map(term => ({
-        id: term._id.toString(),
-        academicYear: (term.academicYearId as any)?.name || "N/A",
-        academicYearId: term.academicYearId.toString(),
+    for (const term of termRows) {
+      const bucket = termsBySession.get(term.sessionId) || [];
+      bucket.push({
+        id: term.id,
         termNumber: term.termNumber,
+        name: term.name,
         startDate: term.startDate,
         endDate: term.endDate,
-        isActive: term.isActive,
-        isPaid: term.isPaid,
-        isClosed: term.isClosed
-      }))
+        isCurrent: term.isCurrent,
+        isClosed: term.isClosed,
+      });
+      termsBySession.set(term.sessionId, bucket);
+    }
+
+    const academicYears = sessionRows.map((session) => ({
+      id: session.id,
+      name: session.year,
+      startDate: session.startDate,
+      endDate: session.endDate,
+      isActive: session.isCurrent,
+      terms: (termsBySession.get(session.id) || []).sort((a, b) => a.termNumber - b.termNumber),
+    }));
+
+    const currentSession = sessionRows.find((session) => session.isCurrent) || null;
+    const currentTerm = currentSession
+      ? (
+          await d1
+            .select({ id: terms.id, termNumber: terms.termNumber, name: terms.name })
+            .from(terms)
+            .where(
+              and(
+                eq(terms.schoolId, user.schoolId),
+                eq(terms.sessionId, currentSession.id),
+                eq(terms.isCurrent, true)
+              )
+            )
+            .limit(1)
+        )[0] || null
+      : null;
+
+    return NextResponse.json({
+      academicYears,
+      current: currentSession
+        ? {
+            session: {
+              id: currentSession.id,
+              name: currentSession.year,
+            },
+            term: currentTerm,
+          }
+        : null,
     });
-  } catch (error: any) {
-    console.error("Fetch academic years error:", error);
+  } catch (error: unknown) {
+    console.error("Parent academic years error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch academic years" },
+      { error: error instanceof Error ? error.message : "Failed to load academic years" },
       { status: 500 }
     );
   }
+}
+
+export async function POST(req: Request) {
+  return GET(req);
+}
+
+export async function PUT() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
+
+export async function PATCH() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
+
+export async function DELETE() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }

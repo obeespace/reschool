@@ -1,169 +1,222 @@
-import connectDB from "@/app/utils/db";
-import AttendanceRecord from "@/app/models/AttendanceRecord";
-import Student from "@/app/models/Students";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { attendanceRecords, teacherClassAssignments, terms } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
-// Teacher: Mark daily attendance
-export async function POST(req: Request) {
+type AttendanceInput = {
+  studentId: string;
+  status: string;
+  excuseReason?: string;
+};
+
+export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!user || user.role !== "TEACHER") {
+    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { classId, termId, academicYearId, attendanceDate, records } =
-      await req.json();
-
-    if (!classId || !termId || !attendanceDate || !records || records.length === 0) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    // Check if already marked for this date
-    const existingRecord = await AttendanceRecord.findOne({
-      classId,
-      attendanceDate: new Date(attendanceDate),
-      schoolId: user.schoolId
-    });
+    const { searchParams } = new URL(req.url);
+    const classId = String(searchParams.get("classId") || "").trim();
+    const day = String(searchParams.get("date") || "").trim();
 
-    if (existingRecord) {
-      return NextResponse.json(
-        { error: "Attendance already marked for this date" },
-        { status: 400 }
-      );
+    const termRows = await d1
+      .select({ id: terms.id })
+      .from(terms)
+      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+      .limit(1);
+
+    if (!termRows[0]) {
+      return NextResponse.json({ attendance: [] });
     }
 
-    // Create attendance record
-    const attendanceRecord = await AttendanceRecord.create({
-      schoolId: user.schoolId,
-      classId,
-      academicYearId,
-      termId,
-      attendanceDate: new Date(attendanceDate),
-      records: records.map((r: any) => ({
-        studentId: r.studentId,
-        status: r.status,
-        excuseReason: r.excuseReason,
-        markedBy: user.userId,
-        markedTime: new Date()
-      })),
-      markedDate: new Date(),
-      total: records.length
+    if (user.role === "TEACHER" && classId) {
+      const assignmentRows = await d1
+        .select({ id: teacherClassAssignments.id })
+        .from(teacherClassAssignments)
+        .where(
+          and(
+            eq(teacherClassAssignments.schoolId, user.schoolId),
+            eq(teacherClassAssignments.teacherId, user.userId),
+            eq(teacherClassAssignments.classId, classId)
+          )
+        )
+        .limit(1);
+
+      if (!assignmentRows[0]) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
+    const rows = await d1
+      .select({
+        id: attendanceRecords.id,
+        classId: attendanceRecords.classId,
+        studentId: attendanceRecords.studentId,
+        status: attendanceRecords.status,
+        attendanceDate: attendanceRecords.attendanceDate,
+        excuseReason: attendanceRecords.excuseReason,
+      })
+      .from(attendanceRecords)
+      .where(and(eq(attendanceRecords.schoolId, user.schoolId), eq(attendanceRecords.termId, termRows[0].id)));
+
+    const filtered = rows.filter((row) => {
+      if (classId && row.classId !== classId) return false;
+      if (day) {
+        const rowDay = new Date(Number(row.attendanceDate)).toISOString().slice(0, 10);
+        if (rowDay !== day) return false;
+      }
+      return true;
     });
 
-    return NextResponse.json({
-      message: "Attendance marked successfully",
-      attendanceRecordId: attendanceRecord._id.toString()
-    });
-  } catch (error: any) {
-    console.error("Mark attendance error:", error);
+    return NextResponse.json({ attendance: filtered });
+  } catch (error: unknown) {
+    console.error("Attendance list error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to mark attendance" },
+      { error: error instanceof Error ? error.message : "Failed to fetch attendance" },
       { status: 500 }
     );
   }
 }
 
-// Get attendance for a student in a term
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!user) {
+    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get("studentId");
-    const termId = searchParams.get("termId");
+    const body = await req.json();
+    const classId = String(body?.classId || "").trim();
+    const attendanceDate = String(body?.attendanceDate || "").trim();
+    const records: AttendanceInput[] = Array.isArray(body?.records) ? body.records : [];
 
-    if (!studentId || !termId) {
+    if (!classId || !attendanceDate || records.length === 0) {
       return NextResponse.json(
-        { error: "studentId and termId required" },
+        { error: "classId, attendanceDate and records are required" },
         { status: 400 }
       );
     }
 
-    // Verify student exists
-    const student = await Student.findOne({
-      _id: studentId,
-      schoolId: user.schoolId
-    });
-
-    if (!student) {
-      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    // Access control for parents
-    if (user.role === "PARENT" && student.parentId?.toString() !== user.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (user.role === "TEACHER") {
+      const assignmentRows = await d1
+        .select({ id: teacherClassAssignments.id })
+        .from(teacherClassAssignments)
+        .where(
+          and(
+            eq(teacherClassAssignments.schoolId, user.schoolId),
+            eq(teacherClassAssignments.teacherId, user.userId),
+            eq(teacherClassAssignments.classId, classId)
+          )
+        )
+        .limit(1);
+
+      if (!assignmentRows[0]) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
 
-    // Get all attendance records for student in term
-    const records = await AttendanceRecord.find({
-      schoolId: user.schoolId,
-      termId,
-      "records.studentId": studentId
-    }).sort({ attendanceDate: -1 });
+    const termRows = await d1
+      .select({ id: terms.id, sessionId: terms.sessionId, isClosed: terms.isClosed })
+      .from(terms)
+      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+      .limit(1);
 
-    // Calculate summary
-    let present = 0,
-      absent = 0,
-      late = 0,
-      excused = 0;
-    records.forEach((rec) => {
-      const studentRec = rec.records.find(
-        (r: any) => r.studentId.toString() === studentId
-      );
-      if (studentRec) {
-        switch (studentRec.status) {
-          case "PRESENT":
-            present++;
-            break;
-          case "ABSENT":
-            absent++;
-            break;
-          case "LATE":
-            late++;
-            break;
-          case "EXCUSED":
-            excused++;
-            break;
+    if (!termRows[0]) {
+      return NextResponse.json({ error: "No active term found" }, { status: 400 });
+    }
+
+    if (termRows[0].isClosed) {
+      return NextResponse.json({ error: "Cannot mark attendance for a closed term" }, { status: 400 });
+    }
+
+    const dateMs = Number(new Date(attendanceDate));
+    if (!Number.isFinite(dateMs)) {
+      return NextResponse.json({ error: "Invalid attendanceDate" }, { status: 400 });
+    }
+
+    const now = new Date();
+    let updated = 0;
+    let inserted = 0;
+
+    await d1.transaction(async (tx) => {
+      for (const record of records) {
+        const studentId = String(record?.studentId || "").trim();
+        const status = String(record?.status || "").trim().toUpperCase();
+        const excuseReason = String(record?.excuseReason || "").trim();
+
+        if (!studentId || !status) continue;
+
+        const existing = await tx
+          .select({ id: attendanceRecords.id })
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.schoolId, user.schoolId),
+              eq(attendanceRecords.studentId, studentId),
+              eq(attendanceRecords.termId, termRows[0].id),
+              eq(attendanceRecords.attendanceDate, new Date(dateMs))
+            )
+          )
+          .limit(1);
+
+        if (existing[0]) {
+          await tx
+            .update(attendanceRecords)
+            .set({
+              status,
+              excuseReason: excuseReason || null,
+              markedBy: user.userId,
+              markedTime: now,
+              updatedAt: now,
+            })
+            .where(eq(attendanceRecords.id, existing[0].id));
+          updated += 1;
+        } else {
+          await tx.insert(attendanceRecords).values({
+            id: crypto.randomUUID(),
+            schoolId: user.schoolId,
+            classId,
+            sectionId: null,
+            studentId,
+            sessionId: termRows[0].sessionId,
+            termId: termRows[0].id,
+            attendanceDate: new Date(dateMs),
+            status,
+            excuseReason: excuseReason || null,
+            markedBy: user.userId,
+            markedTime: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+          inserted += 1;
         }
       }
     });
 
-    const totalDays = present + absent + late + excused;
-    const attendancePercentage = totalDays > 0 ? ((present + late) / totalDays) * 100 : 0;
-
     return NextResponse.json({
-      summary: {
-        present,
-        absent,
-        late,
-        excused,
-        totalDays,
-        attendancePercentage: Math.round(attendancePercentage * 10) / 10
-      },
-      records: records.map((rec) => ({
-        date: rec.attendanceDate,
-        status: rec.records.find((r: any) => r.studentId.toString() === studentId)?.status,
-        excuseReason: rec.records.find((r: any) => r.studentId.toString() === studentId)
-          ?.excuseReason
-      }))
+      message: "Attendance saved",
+      summary: { inserted, updated, totalProcessed: inserted + updated },
     });
-  } catch (error: any) {
-    console.error("Fetch attendance error:", error);
+  } catch (error: unknown) {
+    console.error("Attendance mark error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch attendance" },
+      { error: error instanceof Error ? error.message : "Failed to save attendance" },
       { status: 500 }
     );
   }

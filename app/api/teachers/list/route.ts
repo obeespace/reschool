@@ -1,54 +1,59 @@
-import connectDB from "@/app/utils/db";
-import User from "@/app/models/User";
-import TeacherProfile from "@/app/models/TeacherProfile";
-import "@/app/models/Class";
-import "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
-import { allowRoles } from "@/app/utils/permissions";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { users } from "@/app/db/schema";
+import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
+import { and, eq } from "drizzle-orm";
 
-// List all teachers for the school
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!allowRoles(user, ["ADMIN"])) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const teachers = await User.find({
-      schoolId: user!.schoolId,
-      role: "TEACHER",
-      isActive: true
-    }).select("fullName email");
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    // Get profiles for all teachers
-    const teacherIds = teachers.map(t => t._id);
-    const profiles = await TeacherProfile.find({
-      userId: { $in: teacherIds }
-    })
-      .populate("classTeacherOf", "level arm")
-      .populate("subjectsAndClasses.subjectId", "name code")
-      .populate("subjectsAndClasses.classIds", "level arm");
+    const rows = await d1
+      .select({
+        id: users.id,
+        fullName: users.name,
+        email: users.email,
+      })
+      .from(users)
+      .where(and(eq(users.schoolId, user.schoolId), eq(users.role, "TEACHER")));
 
-    // Combine teacher info with profiles
-    const teachersWithProfiles = teachers.map(teacher => {
-      const profile = profiles.find(p => p.userId.toString() === teacher._id.toString());
-      return {
-        _id: teacher._id,
-        fullName: teacher.fullName,
-        email: teacher.email,
-        profile: profile || null
-      };
-    });
+    const teachers = await Promise.all(
+      rows.map(async (row) => {
+        const profile = await getTeacherProfileData(d1, user.schoolId, row.id);
+        return {
+          _id: row.id,
+          id: row.id,
+          fullName: row.fullName,
+          email: row.email,
+          profile: profile
+            ? {
+                classTeacherOf: profile.classTeacherOf,
+                subjectsAndClasses: profile.subjectsAndClasses,
+              }
+            : {
+                classTeacherOf: null,
+                subjectsAndClasses: [],
+              },
+        };
+      })
+    );
 
-    return NextResponse.json({ teachers: teachersWithProfiles });
-  } catch (error: any) {
-    console.error("List teachers error:", error);
+    return NextResponse.json({ teachers });
+  } catch (error: unknown) {
+    console.error("Fetch teachers error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to list teachers" },
+      { error: error instanceof Error ? error.message : "Failed to fetch teachers" },
       { status: 500 }
     );
   }

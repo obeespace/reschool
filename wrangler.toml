@@ -1,0 +1,14 @@
+name = "reschool"
+main = "./.open-next/worker.js"
+compatibility_date = "2026-03-12"
+compatibility_flags = ["nodejs_compat"]
+account_id = "b1831a8c1783df3e9ed023cc10ee144d"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "reschool-test"
+database_id = "9eb1c160-a320-4740-b66a-e538a38b5085"
+migrations_dir = "drizzle"
+
+[vars]
+NODE_ENV = "production"

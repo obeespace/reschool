@@ -428,7 +428,7 @@ Manual Tests:
 ```
 Existing (Already in project):
   ✅ next (v14+)
-  ✅ mongoose
+  ✅ Drizzle ORM
   ✅ jsonwebtoken
   ✅ typescript
   ✅ react
@@ -461,7 +461,7 @@ To Create (Next Phase):
   ⏳ docker-compose.yml (optional)
   ⏳ .github/workflows/*.yml (CI/CD)
   ⏳ .env.production
-  ⏳ mongodb/setup-indices.js (data migration)
+  ⏳ Cloudflare D1/setup-indices.js (data migration)
 ```
 
 ---

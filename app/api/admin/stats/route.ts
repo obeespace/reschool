@@ -1,65 +1,100 @@
-import connectDB from "@/app/utils/db";
-import { verifyToken } from "@/app/utils/auth";
-import { allowRoles } from "@/app/utils/permissions";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import School from "@/app/models/School";
-import User from "@/app/models/User";
-import Student from "@/app/models/Students";
-import Class from "@/app/models/Class";
-import Subject from "@/app/models/Subject";
-import Term from "@/app/models/Term";
-import "@/app/models/AcademicYear";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import {
+  classes,
+  schools,
+  sessions,
+  students,
+  subjects,
+  terms,
+  users,
+} from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
+import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
 
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
     if (!user || user.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const schoolId = user.schoolId;
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    // Fetch school info
-    const school = await School.findById(schoolId);
+    const bypassCache = shouldBypassServerCache(req);
+    const payload = await getOrSetServerCache({
+      key: `admin:stats:${schoolId}`,
+      ttlMs: 20_000,
+      bypass: bypassCache,
+      factory: async () => {
+        const [
+          schoolRow,
+          activeTermRow,
+          teacherRows,
+          parentRows,
+          studentRows,
+          classRows,
+          subjectRows,
+        ] = await Promise.all([
+          d1.select({ name: schools.name }).from(schools).where(eq(schools.id, schoolId)).limit(1),
+          d1.select().from(terms).where(and(eq(terms.schoolId, schoolId), eq(terms.isCurrent, true))).limit(1),
+          d1.select({ id: users.id }).from(users).where(and(eq(users.schoolId, schoolId), eq(users.role, "TEACHER"))),
+          d1.select({ id: users.id }).from(users).where(and(eq(users.schoolId, schoolId), eq(users.role, "PARENT"))),
+          d1.select({ id: students.id }).from(students).where(eq(students.schoolId, schoolId)),
+          d1.select({ id: classes.id }).from(classes).where(eq(classes.schoolId, schoolId)),
+          d1.select({ id: subjects.id }).from(subjects).where(eq(subjects.schoolId, schoolId)),
+        ]);
 
-    // Get active term info
-    const activeTerm = await Term.findOne({
-      schoolId,
-      isActive: true
-    }).populate("academicYearId", "name");
+        const activeSession = activeTermRow.length
+          ? await d1
+              .select({ year: sessions.year })
+              .from(sessions)
+              .where(eq(sessions.id, activeTermRow[0].sessionId))
+              .limit(1)
+          : [];
 
-    // Count users by role
-    const teachers = await User.countDocuments({ schoolId, role: "TEACHER" });
-    const parents = await User.countDocuments({ schoolId, role: "PARENT" });
-    const students = await Student.countDocuments({ schoolId });
-    const classes = await Class.countDocuments({ schoolId });
-    const subjects = await Subject.countDocuments({ schoolId });
-
-    return NextResponse.json({
-      schoolName: school?.name || "School",
-      stats: {
-        teachers,
-        students,
-        parents,
-        classes,
-        subjects,
+        return {
+          schoolName: schoolRow[0]?.name || "School",
+          stats: {
+            teachers: teacherRows.length,
+            students: studentRows.length,
+            parents: parentRows.length,
+            classes: classRows.length,
+            subjects: subjectRows.length,
+          },
+          activeTerm: activeTermRow.length
+            ? {
+                academicYear: activeSession[0]?.year || "N/A",
+                term: activeTermRow[0].termNumber,
+                isPaid: activeTermRow[0].isPaid,
+                isClosed: activeTermRow[0].isClosed,
+                startDate: activeTermRow[0].startDate,
+                endDate: activeTermRow[0].endDate,
+              }
+            : null,
+        };
       },
-      activeTerm: activeTerm ? {
-        academicYear: (activeTerm.academicYearId as any)?.name || "N/A",
-        term: activeTerm.termNumber,
-        isPaid: activeTerm.isPaid,
-        isClosed: activeTerm.isClosed,
-        startDate: activeTerm.startDate,
-        endDate: activeTerm.endDate
-      } : null
     });
-  } catch (error: any) {
+
+    return NextResponse.json(payload, {
+      headers: {
+        "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
+      },
+    });
+  } catch (error: unknown) {
     console.error("Error fetching admin stats:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch stats" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to fetch stats",
+      },
       { status: 500 }
     );
   }

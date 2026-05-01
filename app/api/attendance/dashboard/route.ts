@@ -1,172 +1,112 @@
-import connectDB from "@/app/utils/db";
-import AttendanceRecord from "@/app/models/AttendanceRecord";
-import Class from "@/app/models/Class";
-import Students from "@/app/models/Students";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-
-/**
- * Attendance Dashboard API
- * Get class/term attendance summary with per-student breakdown
- * Access: ADMIN, TEACHER (own class)
- */
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { attendanceRecords, terms } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!user) {
+    if (!user || (user.role !== "ADMIN" && user.role !== "TEACHER")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
+
     const { searchParams } = new URL(req.url);
-    const classId = searchParams.get("classId");
-    const termId = searchParams.get("termId");
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
+    const classId = String(searchParams.get("classId") || "").trim();
 
-    if (!classId || !termId) {
-      return NextResponse.json(
-        { error: "classId and termId are required" },
-        { status: 400 }
-      );
-    }
+    const termRows = await d1
+      .select({ id: terms.id, termNumber: terms.termNumber })
+      .from(terms)
+      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+      .limit(1);
 
-    // Access control: teacher can only view own class
-    if (user.role === "TEACHER") {
-      const teacherClass = await Class.findOne({
-        _id: classId,
-        classTutorId: user.id,
-        schoolId: user.schoolId
+    if (!termRows[0]) {
+      return NextResponse.json({
+        stats: { totalMarked: 0, present: 0, absent: 0, late: 0, excused: 0, attendanceRate: 0 },
+        byDate: [],
+        byClass: [],
       });
-
-      if (!teacherClass) {
-        return NextResponse.json(
-          { error: "Cannot access this class" },
-          { status: 403 }
-        );
-      }
     }
 
-    // Build date filter
-    const dateFilter: any = {};
-    if (startDate) dateFilter.$gte = new Date(startDate);
-    if (endDate) dateFilter.$lte = new Date(endDate);
+    const rows = await d1
+      .select({
+        classId: attendanceRecords.classId,
+        studentId: attendanceRecords.studentId,
+        status: attendanceRecords.status,
+        attendanceDate: attendanceRecords.attendanceDate,
+      })
+      .from(attendanceRecords)
+      .where(and(eq(attendanceRecords.schoolId, user.schoolId), eq(attendanceRecords.termId, termRows[0].id)));
 
-    // Fetch attendance records for this class/term
-    const attendanceRecords = await AttendanceRecord.find({
-      schoolId: user.schoolId,
-      classId,
-      termId,
-      ...(Object.keys(dateFilter).length && { attendanceDate: dateFilter })
-    })
-      .sort({ attendanceDate: -1 })
-      .lean();
+    const filteredRows = classId ? rows.filter((row) => row.classId === classId) : rows;
 
-    // Get all students in this class
-    const students = await Students.find({
-      currentClass: classId,
-      schoolId: user.schoolId
-    }).select("_id fullName studentId");
+    let present = 0;
+    let absent = 0;
+    let late = 0;
+    let excused = 0;
+    const byDateMap = new Map<string, { date: string; total: number; present: number; absent: number; late: number; excused: number }>();
+    const byClassMap = new Map<string, { classId: string; total: number; present: number }>();
 
-    // Calculate per-student attendance
-    const studentAttendance: Record<
-      string,
-      {
-        studentId: string;
-        studentName: string;
-        present: number;
-        absent: number;
-        late: number;
-        excused: number;
-        attendancePercentage: number;
-        status: string; // EXCELLENT | GOOD | WARNING | CRITICAL
-      }
-    > = {};
+    for (const row of filteredRows) {
+      const status = String(row.status || "").toUpperCase();
+      if (status === "PRESENT") present += 1;
+      else if (status === "ABSENT") absent += 1;
+      else if (status === "LATE") late += 1;
+      else if (status === "EXCUSED") excused += 1;
 
-    students.forEach((student) => {
-      studentAttendance[student._id.toString()] = {
-        studentId: student.studentId,
-        studentName: student.fullName,
+      const dateKey = new Date(Number(row.attendanceDate)).toISOString().slice(0, 10);
+      const existingDate = byDateMap.get(dateKey) || {
+        date: dateKey,
+        total: 0,
         present: 0,
         absent: 0,
         late: 0,
         excused: 0,
-        attendancePercentage: 0,
-        status: "EXCELLENT"
       };
-    });
 
-    // Process attendance records
-    attendanceRecords.forEach((record: any) => {
-      record.records.forEach((r: any) => {
-        const sid = r.studentId.toString();
-        if (studentAttendance[sid]) {
-          switch (r.status) {
-            case "PRESENT":
-              studentAttendance[sid].present++;
-              break;
-            case "ABSENT":
-              studentAttendance[sid].absent++;
-              break;
-            case "LATE":
-              studentAttendance[sid].late++;
-              break;
-            case "EXCUSED":
-              studentAttendance[sid].excused++;
-              break;
-          }
-        }
-      });
-    });
+      existingDate.total += 1;
+      if (status === "PRESENT") existingDate.present += 1;
+      else if (status === "ABSENT") existingDate.absent += 1;
+      else if (status === "LATE") existingDate.late += 1;
+      else if (status === "EXCUSED") existingDate.excused += 1;
+      byDateMap.set(dateKey, existingDate);
 
-    // Calculate percentages and status
-    const studentAttendanceArray = Object.values(studentAttendance);
-    studentAttendanceArray.forEach((att) => {
-      const totalDays = att.present + att.absent + att.late + att.excused;
-      if (totalDays > 0) {
-        att.attendancePercentage = Math.round(
-          ((att.present + att.late) / totalDays) * 100
-        );
+      const existingClass = byClassMap.get(row.classId) || { classId: row.classId, total: 0, present: 0 };
+      existingClass.total += 1;
+      if (status === "PRESENT") existingClass.present += 1;
+      byClassMap.set(row.classId, existingClass);
+    }
 
-        if (att.attendancePercentage >= 90) att.status = "EXCELLENT";
-        else if (att.attendancePercentage >= 75) att.status = "GOOD";
-        else if (att.attendancePercentage >= 60) att.status = "WARNING";
-        else att.status = "CRITICAL";
-      }
-    });
-
-    // Sort by attendance percentage (ascending - critical first)
-    studentAttendanceArray.sort((a, b) => a.attendancePercentage - b.attendancePercentage);
-
-    // Calculate class summary
-    const classStats = {
-      totalStudents: students.length,
-      averageAttendance: Math.round(
-        studentAttendanceArray.reduce((sum, s) => sum + s.attendancePercentage, 0) /
-          (studentAttendanceArray.length || 1)
-      ),
-      criticalCount: studentAttendanceArray.filter((s) => s.status === "CRITICAL").length,
-      warningCount: studentAttendanceArray.filter((s) => s.status === "WARNING").length,
-      excellentCount: studentAttendanceArray.filter((s) => s.status === "EXCELLENT").length
-    };
+    const totalMarked = filteredRows.length;
+    const attendanceRate = totalMarked ? Number(((present / totalMarked) * 100).toFixed(2)) : 0;
 
     return NextResponse.json({
-      class: classId,
-      term: termId,
-      dateRange: {
-        from: startDate || "All",
-        to: endDate || "Today"
+      term: termRows[0].termNumber,
+      stats: {
+        totalMarked,
+        present,
+        absent,
+        late,
+        excused,
+        attendanceRate,
       },
-      classStats,
-      studentAttendance: studentAttendanceArray
+      byDate: [...byDateMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      byClass: [...byClassMap.values()].map((entry) => ({
+        ...entry,
+        attendanceRate: entry.total ? Number(((entry.present / entry.total) * 100).toFixed(2)) : 0,
+      })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Attendance dashboard error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch attendance dashboard" },
+      { error: error instanceof Error ? error.message : "Failed to load attendance dashboard" },
       { status: 500 }
     );
   }

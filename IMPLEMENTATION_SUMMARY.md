@@ -246,7 +246,7 @@ POST /api/scores/upload
 ## Environment Variables Required
 
 ```env
-MONGODB_URI=your_mongodb_connection_string
+Cloudflare D1_URI=your_Cloudflare D1_connection_string
 JWT_SECRET=your_secret_key
 NEXT_PUBLIC_API_URL=your_api_url
 ```

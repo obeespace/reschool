@@ -1,120 +1,89 @@
-import connectDB from "@/app/utils/db";
-import TeacherActivity from "@/app/models/TeacherActivity";
-import User from "@/app/models/User";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-
-/**
- * Teacher Rewards Leaderboard
- * Weighted scoring system to identify top 10 most active & impactful teachers
- */
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { terms } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
+import { buildTeacherRewardsLeaderboard } from "@/app/utils/teacherRewards";
 
 export async function GET(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!user) {
+    if (!user || (user.role !== "ADMIN" && user.role !== "TEACHER")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // Weight system for activities
-    const activityWeights: Record<string, number> = {
-      UPLOAD_SCORE: 5,
-      POST_ANNOUNCEMENT: 2,
-      STUDENT_FEEDBACK: 3,
-      MARK_ENTRY: 5,
-      ATTENDANCE_MARK: 1
-    };
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    // Get all teacher activities (current month for anti-gaming)
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    const { searchParams } = new URL(req.url);
+    const termIdQuery = String(searchParams.get("termId") || "").trim();
+    const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit") || 5)));
 
-    const activities = await TeacherActivity.find({
-      schoolId: user.schoolId,
-      createdAt: { $gte: startOfMonth }
-    });
+    const resolvedTermId = termIdQuery
+      ? termIdQuery
+      : (
+          await d1
+            .select({ id: terms.id })
+            .from(terms)
+            .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+            .limit(1)
+        )[0]?.id;
 
-    // Calculate weighted scores
-    const teacherScores: Record<
-      string,
-      {
-        teacherId: string;
-        totalPoints: number;
-        activityCount: number;
-        breakdown: Record<string, number>;
-      }
-    > = {};
+    if (!resolvedTermId) {
+      return NextResponse.json({ leaderboard: [], termId: null });
+    }
 
-    activities.forEach((activity: any) => {
-      const teacherId = activity.teacherId.toString();
-      const weight = activityWeights[activity.action] || 0;
-
-      if (!teacherScores[teacherId]) {
-        teacherScores[teacherId] = {
-          teacherId,
-          totalPoints: 0,
-          activityCount: 0,
-          breakdown: {}
-        };
-      }
-
-      teacherScores[teacherId].totalPoints += weight;
-      teacherScores[teacherId].activityCount += 1;
-      teacherScores[teacherId].breakdown[activity.action] =
-        (teacherScores[teacherId].breakdown[activity.action] || 0) + weight;
-    });
-
-    // Convert to array and sort
-    const leaderboard = Object.values(teacherScores)
-      .sort((a, b) => b.totalPoints - a.totalPoints)
-      .slice(0, 10); // Top 10
-
-    // Enrich with teacher names
-    const enrichedLeaderboard = await Promise.all(
-      leaderboard.map(async (entry) => {
-        const teacher = await User.findOne({
-          _id: entry.teacherId,
-          schoolId: user.schoolId
-        }).select("fullName email");
-
-        return {
-          rank: leaderboard.indexOf(entry) + 1,
-          teacherId: entry.teacherId,
-          teacherName: teacher?.fullName || "Unknown",
-          totalPoints: entry.totalPoints,
-          activityCount: entry.activityCount,
-          averagePointsPerActivity: (
-            entry.totalPoints / entry.activityCount
-          ).toFixed(2),
-          breakdown: entry.breakdown,
-          badge:
-            entry.totalPoints >= 100
-              ? "⭐ Excellence"
-              : entry.totalPoints >= 50
-                ? "🌟 High Performer"
-                : entry.totalPoints >= 20
-                  ? "👍 Active"
-                  : "📊 Participant"
-        };
-      })
-    );
+    const fullRanked = await buildTeacherRewardsLeaderboard(d1, user.schoolId, resolvedTermId, 1000);
+    const ranked = fullRanked.slice(0, limit);
+    const self = user.role === "TEACHER"
+      ? fullRanked.find((entry) => entry.teacherId === user.userId) || null
+      : null;
 
     return NextResponse.json({
-      period: `${startOfMonth.toLocaleDateString()} - Today`,
-      totalTeachers: Object.keys(teacherScores).length,
-      weightSystem: activityWeights,
-      leaderboard: enrichedLeaderboard
+      termId: resolvedTermId,
+      leaderboard: ranked,
+      self,
+      totalTeachersRanked: fullRanked.length,
+      scoringModel: {
+        period: "term",
+        topWinners: 5,
+        signals: [
+          "daily_marks",
+          "attendance_updates",
+          "teacher_remarks",
+          "announcements",
+          "app_activity_events",
+          "frequency",
+          "timeliness",
+          "consistency",
+        ],
+      },
     });
-  } catch (error: any) {
-    console.error("Fetch leaderboard error:", error);
+  } catch (error: unknown) {
+    console.error("Teacher leaderboard error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch leaderboard" },
+      { error: error instanceof Error ? error.message : "Failed to load teacher leaderboard" },
       { status: 500 }
     );
   }
 }
 
+export async function POST(req: Request) {
+  return GET(req);
+}
+
+export async function PUT() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
+
+export async function PATCH() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
+
+export async function DELETE() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}

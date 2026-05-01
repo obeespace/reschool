@@ -1,200 +1,167 @@
-import connectDB from "@/app/utils/db";
-import Score from "@/app/models/Score";
-import AIGuidance from "@/app/models/AIGuidance";
-import "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { auditLogs, parentWardLinks, results, students, subjects } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
 
-/**
- * AI Guidance Counselor for SSS3 Students
- * Analyzes final scores to provide university course recommendations
- */
+type Cluster = {
+  name: string;
+  keywords: string[];
+  courses: string[];
+  score: number;
+};
 
 export async function POST(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: any = verifyToken(token || "");
-
-    if (!admin || admin.role !== "ADMIN") {
+    const user: ITokenPayload | null = verifyToken(token || "");
+    if (!user || (user.role !== "ADMIN" && user.role !== "PARENT")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { studentId } = await req.json();
-
+    const body = await req.json().catch(() => ({}));
+    const studentId = String(body?.studentId || "").trim();
     if (!studentId) {
-      return NextResponse.json({ error: "studentId required" }, { status: 400 });
+      return NextResponse.json({ error: "studentId is required" }, { status: 400 });
     }
 
-    // Check if recommendation already exists
-    const existingRecommendation = await AIGuidance.findOne({
-      schoolId: admin.schoolId,
-      studentId,
-      stage: "SSS3"
-    });
-
-    if (existingRecommendation) {
-      return NextResponse.json({
-        message: "Recommendation already exists for this student",
-        recommendation: existingRecommendation
-      });
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    // Get all SSS3 scores
-    const scores = await Score.find({ studentId })
-      .populate("subjectId", "name code")
-      .lean();
-
-    if (scores.length === 0) {
-      return NextResponse.json(
-        { error: "No scores found for this student", recommendation: "PENDING" },
-        { status: 400 }
-      );
-    }
-
-    // Analyze by subject
-    const subjectScores: Record<string, { name: string; total: number }> = {};
-
-    scores.forEach((score: any) => {
-      const subjectName = score.subjectId?.name || "Unknown";
-      if (!subjectScores[subjectName]) {
-        subjectScores[subjectName] = { name: subjectName, total: 0 };
+    if (user.role === "PARENT") {
+      const link = await d1
+        .select({ id: parentWardLinks.id })
+        .from(parentWardLinks)
+        .where(
+          and(
+            eq(parentWardLinks.schoolId, user.schoolId),
+            eq(parentWardLinks.parentId, user.userId),
+            eq(parentWardLinks.studentId, studentId)
+          )
+        )
+        .limit(1);
+      if (!link[0]) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      subjectScores[subjectName].total = Math.max(
-        subjectScores[subjectName].total,
-        score.total || 0
-      );
-    });
-
-    // Recommend top 3 performing subjects as focus areas
-    const ranked = Object.values(subjectScores)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 3);
-
-    const recommendations = ranked.map(
-      (s) =>
-        `${s.name} (Score: ${s.total}/100) - Primary area of strength`
-    );
-
-    // Provide career guidance based on subjects
-    let careerPaths: string[] = [];
-    const topSubject = ranked[0]?.name.toLowerCase() || "";
-
-    if (
-      topSubject.includes("math") ||
-      topSubject.includes("physics") ||
-      topSubject.includes("chemistry")
-    ) {
-      careerPaths = [
-        "Engineering",
-        "Computer Science",
-        "Actuarial Science",
-        "Physics",
-        "Geology"
-      ];
-    } else if (
-      topSubject.includes("biology") ||
-      topSubject.includes("chemistry")
-    ) {
-      careerPaths = [
-        "Medicine",
-        "Pharmacy",
-        "Nursing",
-        "Biochemistry",
-        "Bioinformatics"
-      ];
-    } else if (topSubject.includes("economics") || topSubject.includes("accounts")) {
-      careerPaths = [
-        "Economics",
-        "Accounting",
-        "Finance",
-        "Business Administration",
-        "Actuarial Science"
-      ];
-    } else if (topSubject.includes("law") || topSubject.includes("government")) {
-      careerPaths = [
-        "Law",
-        "Political Science",
-        "Public Administration",
-        "International Relations",
-        "Diplomacy"
-      ];
-    } else {
-      careerPaths = [
-        "Humanities",
-        "Education",
-        "Mass Communication",
-        "Social Sciences"
-      ];
     }
 
-    const reasons = [
-      ...recommendations,
-      `Recommended career paths: ${careerPaths.join(", ")}`,
-      "University JAMB cutoff scores: 180+. Current performance supports this goal."
+    const studentRows = await d1
+      .select({ id: students.id, firstName: students.firstName, lastName: students.lastName })
+      .from(students)
+      .where(and(eq(students.schoolId, user.schoolId), eq(students.id, studentId)))
+      .limit(1);
+
+    if (!studentRows[0]) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
+    const scoreRows = await d1
+      .select({ subjectName: subjects.name, score: results.score })
+      .from(results)
+      .innerJoin(subjects, eq(results.subjectId, subjects.id))
+      .where(and(eq(results.schoolId, user.schoolId), eq(results.studentId, studentId)));
+
+    const clusters: Cluster[] = [
+      {
+        name: "Engineering and Technology",
+        keywords: ["math", "physics", "chem", "technical"],
+        courses: ["Engineering", "Computer Science", "Architecture", "Surveying"],
+        score: 0,
+      },
+      {
+        name: "Health and Life Sciences",
+        keywords: ["biology", "chem", "physics", "health"],
+        courses: ["Medicine", "Nursing", "Pharmacy", "Biochemistry"],
+        score: 0,
+      },
+      {
+        name: "Business and Social Sciences",
+        keywords: ["economics", "commerce", "account", "government", "business"],
+        courses: ["Accounting", "Economics", "Business Administration", "Political Science"],
+        score: 0,
+      },
+      {
+        name: "Arts and Communication",
+        keywords: ["english", "literature", "history", "government", "language"],
+        courses: ["Law", "Mass Communication", "International Relations", "Linguistics"],
+        score: 0,
+      },
     ];
 
-    // Create guidance record
-    const guidance = await AIGuidance.create({
-      schoolId: admin.schoolId,
-      studentId,
-      stage: "SSS3",
-      recommendation: careerPaths.join(" | "),
-      reasons
+    for (const row of scoreRows) {
+      const name = row.subjectName.toLowerCase();
+      const value = Number(row.score) || 0;
+      for (const cluster of clusters) {
+        if (cluster.keywords.some((keyword) => name.includes(keyword))) {
+          cluster.score += value;
+        }
+      }
+    }
+
+    const denominator = scoreRows.length || 1;
+    const ranked = clusters
+      .map((cluster) => ({
+        cluster: cluster.name,
+        confidence: Number((cluster.score / denominator).toFixed(2)),
+        suggestedCourses: cluster.courses,
+      }))
+      .sort((a, b) => b.confidence - a.confidence);
+
+    const responsePayload = {
+      student: {
+        id: studentRows[0].id,
+        fullName: `${studentRows[0].firstName} ${studentRows[0].lastName}`.trim(),
+      },
+      recommendations: ranked,
+      bestFitCluster: ranked[0]?.cluster || null,
+      summary: {
+        model: "heuristic-v1",
+        scoreSampleSize: scoreRows.length,
+      },
+    };
+
+    const now = new Date();
+    await d1.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      schoolId: user.schoolId,
+      actorId: user.userId,
+      action: "AI_SSS3_RECOMMENDATION_GENERATED",
+      metaJson: JSON.stringify({
+        studentId,
+        studentName: responsePayload.student.fullName,
+        level: "SSS3",
+        recommendations: responsePayload.recommendations,
+        topChoice: responsePayload.bestFitCluster,
+        summary: responsePayload.summary,
+      }),
+      createdAt: now,
+      updatedAt: now,
     });
 
-    return NextResponse.json({
-      message: "SSS3 Guidance recommendation generated successfully",
-      careerPaths,
-      recommendation: guidance.recommendation,
-      guidanceId: guidance._id.toString()
-    });
-  } catch (error: any) {
-    console.error("SSS3 AI Guidance error:", error);
+    return NextResponse.json(responsePayload);
+  } catch (error: unknown) {
+    console.error("SSS3 recommendation error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to generate recommendation" },
+      { error: error instanceof Error ? error.message : "Failed to generate SSS3 recommendation" },
       { status: 500 }
     );
   }
 }
 
-// Get recommendation for a student
-export async function GET(req: Request) {
-  try {
-    await connectDB();
-    const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+export async function PUT() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
 
-    const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get("studentId");
+export async function PATCH() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}
 
-    if (!studentId) {
-      return NextResponse.json({ error: "studentId required" }, { status: 400 });
-    }
-
-    const guidance = await AIGuidance.findOne({
-      schoolId: user.schoolId,
-      studentId,
-      stage: "SSS3"
-    }).lean();
-
-    if (!guidance) {
-      return NextResponse.json({
-        recommendation: null,
-        message: "No guidance recommendation found for this student"
-      });
-    }
-
-    return NextResponse.json({ guidance });
-  } catch (error: any) {
-    console.error("Fetch SSS3 guidance error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch guidance" },
-      { status: 500 }
-    );
-  }
+export async function DELETE() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }

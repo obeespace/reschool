@@ -1,65 +1,65 @@
-import connectDB from "@/app/utils/db";
-import Class from "@/app/models/Class";
-import Subject from "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
-import { allowRoles } from "@/app/utils/permissions";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { classes, classSubjects, subjects } from "@/app/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
 
-// Link subjects to a class
 export async function POST(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user = verifyToken(token || "");
-    
-    if (!allowRoles(user, ["ADMIN"])) {
+    const admin: ITokenPayload | null = verifyToken(token || "");
+
+    if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { classId, subjectIds } = await req.json();
+    const body = await req.json();
+    const classId = String(body?.classId || "").trim();
+    const subjectIds = Array.isArray(body?.subjectIds)
+      ? body.subjectIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+      : [];
 
-    if (!classId || !subjectIds || !Array.isArray(subjectIds)) {
-      return NextResponse.json(
-        { error: "Class ID and subject IDs array are required" },
-        { status: 400 }
-      );
+    if (!classId || subjectIds.length === 0) {
+      return NextResponse.json({ error: "classId and at least one subjectId are required" }, { status: 400 });
     }
 
-    // Verify all subjects exist and belong to the same school
-    const subjects = await Subject.find({
-      _id: { $in: subjectIds },
-      schoolId: user!.schoolId
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
+
+    const [classRows, subjectRows] = await Promise.all([
+      d1.select({ id: classes.id }).from(classes).where(and(eq(classes.id, classId), eq(classes.schoolId, admin.schoolId))).limit(1),
+      d1.select({ id: subjects.id }).from(subjects).where(and(eq(subjects.schoolId, admin.schoolId), inArray(subjects.id, subjectIds))),
+    ]);
+
+    if (!classRows[0] || subjectRows.length !== subjectIds.length) {
+      return NextResponse.json({ error: "Class or one or more subjects not found" }, { status: 404 });
+    }
+
+    const now = new Date();
+    await d1.transaction(async (tx) => {
+      await tx
+        .delete(classSubjects)
+        .where(and(eq(classSubjects.schoolId, admin.schoolId), eq(classSubjects.classId, classId)));
+
+      for (const subjectId of subjectIds) {
+        await tx.insert(classSubjects).values({
+          id: crypto.randomUUID(),
+          schoolId: admin.schoolId,
+          classId,
+          subjectId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     });
 
-    if (subjects.length !== subjectIds.length) {
-      return NextResponse.json(
-        { error: "Some subjects not found or do not belong to your school" },
-        { status: 400 }
-      );
-    }
-
-    // Update the class with the subjects
-    const updatedClass = await Class.findOneAndUpdate(
-      { _id: classId, schoolId: user!.schoolId },
-      { $set: { subjectIds } },
-      { new: true }
-    );
-
-    if (!updatedClass) {
-      return NextResponse.json(
-        { error: "Class not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      message: "Subjects linked to class successfully",
-      class: updatedClass
-    });
-  } catch (error: any) {
-    console.error("Link subjects error:", error);
+    return NextResponse.json({ message: "Class subjects updated successfully" });
+  } catch (error: unknown) {
+    console.error("Link class subjects error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to link subjects to class" },
+      { error: error instanceof Error ? error.message : "Failed to link class subjects" },
       { status: 500 }
     );
   }

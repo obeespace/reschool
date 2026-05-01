@@ -1,65 +1,38 @@
-import connectDB from "@/app/utils/db";
-import User from "@/app/models/User";
-import TeacherProfile from "@/app/models/TeacherProfile";
-import "@/app/models/Class";
-import "@/app/models/Subject";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin = verifyToken(token || "");
+    const admin: ITokenPayload | null = verifyToken(token || "");
 
     if (!admin || admin.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { id: teacherId } = await params;
+    const { id } = await context.params;
+    const teacherId = String(id || "").trim();
+    if (!teacherId) {
+      return NextResponse.json({ error: "Teacher ID is required" }, { status: 400 });
+    }
 
-    // Get user info
-    const user = await User.findOne({ 
-      _id: teacherId, 
-      schoolId: admin.schoolId,
-      role: "TEACHER" 
-    });
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    }
 
-    if (!user) {
+    const teacher = await getTeacherProfileData(d1, admin.schoolId, teacherId);
+    if (!teacher) {
       return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
     }
 
-    // Get teacher profile
-    const teacherProfile = await TeacherProfile.findOne({ 
-      userId: teacherId,
-      schoolId: admin.schoolId 
-    })
-      .populate("classTeacherOf", "name level arm")
-      .populate({
-        path: "subjectsAndClasses.subjectId",
-        select: "name code"
-      })
-      .populate({
-        path: "subjectsAndClasses.classIds",
-        select: "name level arm"
-      });
-
-    const teacher = {
-      _id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      classTeacherOf: teacherProfile?.classTeacherOf || null,
-      subjectsAndClasses: teacherProfile?.subjectsAndClasses || []
-    };
-
     return NextResponse.json({ teacher });
-  } catch (error: any) {
-    console.error("Get teacher profile error:", error);
+  } catch (error: unknown) {
+    console.error("Fetch teacher detail error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch teacher profile" },
+      { error: error instanceof Error ? error.message : "Failed to fetch teacher detail" },
       { status: 500 }
     );
   }

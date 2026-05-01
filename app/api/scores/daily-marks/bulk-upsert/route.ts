@@ -1,183 +1,212 @@
-import connectDB from "@/app/utils/db";
-import DailyMark from "@/app/models/DailyMark";
-import TeacherProfile from "@/app/models/TeacherProfile";
-import Student from "@/app/models/Students";
-import Term from "@/app/models/Term";
-import { verifyToken } from "@/app/utils/auth";
+import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
+import { getOptionalD1Client } from "@/app/db/runtime";
+import { auditLogs, dailyMarks, teacherSubjectAssignments, terms } from "@/app/db/schema";
+import { and, eq } from "drizzle-orm";
+import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
+
+type Entry = {
+  studentId: string;
+  score: number;
+  notes?: string;
+};
 
 export async function POST(req: Request) {
   try {
-    await connectDB();
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: any = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
 
-    if (!user || user.role !== "TEACHER") {
+    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const body = await req.json();
-    const classId = typeof body.classId === "string" ? body.classId : "";
-    const subjectId = typeof body.subjectId === "string" ? body.subjectId : "";
-    const academicYearId = typeof body.academicYearId === "string" ? body.academicYearId : "";
-    const requestedTermId = typeof body.termId === "string" ? body.termId : undefined;
+    const classId = String(body?.classId || "").trim();
+    const subjectId = String(body?.subjectId || "").trim();
+    const type = String(body?.type || "").trim().toLowerCase();
+    const maxScore = Number(body?.maxScore || 10);
+    const academicYearId = String(body?.academicYearId || "").trim();
+    const entries: Entry[] = Array.isArray(body?.entries) ? body.entries : [];
 
-    const rawType = typeof body.type === "string"
-      ? body.type
-      : typeof body.assessmentType === "string"
-        ? body.assessmentType
-        : "";
-
-    const typeMap: Record<string, string> = {
-      classwork: "CLASSWORK",
-      CLASSWORK: "CLASSWORK",
-      homework: "HOMEWORK",
-      HOMEWORK: "HOMEWORK",
-      test: "EVALUATION",
-      TEST: "EVALUATION",
-      extracurricular: "EVALUATION",
-      EXTRACURRICULAR: "EVALUATION",
-      EVALUATION: "EVALUATION",
-      exam: "EXAM",
-      EXAM: "EXAM"
-    };
-
-    const assessmentType = typeMap[rawType] || "";
-    const maxScore = body.maxScore !== undefined ? Number(body.maxScore) : 10;
-    const entries = Array.isArray(body.entries) ? body.entries : [];
-
-    if (!classId || !subjectId || !academicYearId || !assessmentType || entries.length === 0) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
-
-    if (Number.isNaN(maxScore) || maxScore <= 0) {
-      return NextResponse.json({ error: "Max score must be greater than 0" }, { status: 400 });
-    }
-
-    const activeTerm = requestedTermId
-      ? await Term.findOne({ _id: requestedTermId, schoolId: user.schoolId })
-      : await Term.findOne({ schoolId: user.schoolId, isActive: true });
-
-    if (!activeTerm) {
-      return NextResponse.json({ error: "No active term found" }, { status: 400 });
-    }
-
-    if (activeTerm.isClosed) {
-      return NextResponse.json({ error: "This term is closed. Cannot record marks." }, { status: 400 });
-    }
-
-    const teacherProfile = await TeacherProfile.findOne({
-      schoolId: user.schoolId,
-      userId: user.userId
-    }).select("subjectsAndClasses");
-
-    if (!teacherProfile) {
-      return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
-    }
-
-    const teachesSubjectInClass = (teacherProfile.subjectsAndClasses || []).some(
-      (assignment: any) =>
-        assignment?.subjectId?.toString() === subjectId &&
-        (assignment?.classIds || []).some((classObjectId: any) => classObjectId?.toString() === classId)
-    );
-
-    if (!teachesSubjectInClass) {
+    if (!classId || !subjectId || !type || entries.length === 0) {
       return NextResponse.json(
-        { error: "You can only upload marks for subjects/classes assigned to you" },
-        { status: 403 }
+        { error: "classId, subjectId, type and entries are required" },
+        { status: 400 }
       );
     }
 
-    const normalizedEntries = entries
-      .map((entry: any) => ({
-        studentId: typeof entry?.studentId === "string" ? entry.studentId : "",
-        score: entry?.score === "" || entry?.score === null || entry?.score === undefined ? null : Number(entry.score),
-        notes: typeof entry?.notes === "string" ? entry.notes : ""
-      }))
-      .filter((entry: any) => entry.studentId && entry.score !== null && !Number.isNaN(entry.score));
-
-    if (normalizedEntries.length === 0) {
-      return NextResponse.json({ error: "No valid score entries provided" }, { status: 400 });
+    if (!Number.isFinite(maxScore) || maxScore <= 0) {
+      return NextResponse.json({ error: "maxScore must be greater than 0" }, { status: 400 });
     }
 
-    const invalidScore = normalizedEntries.find((entry: any) => entry.score < 0 || entry.score > 100);
-    if (invalidScore) {
-      return NextResponse.json({ error: "All scores must be between 0 and 100" }, { status: 400 });
+    const d1 = getOptionalD1Client();
+    if (!d1) {
+      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
     }
 
-    const studentIds = normalizedEntries.map((entry: any) => entry.studentId);
-    const validStudents = await Student.find({
-      _id: { $in: studentIds },
-      schoolId: user.schoolId,
-      currentClassId: classId
-    }).select("_id");
+    if (user.role === "TEACHER") {
+      const allowedRows = await d1
+        .select({ id: teacherSubjectAssignments.id })
+        .from(teacherSubjectAssignments)
+        .where(
+          and(
+            eq(teacherSubjectAssignments.schoolId, user.schoolId),
+            eq(teacherSubjectAssignments.teacherId, user.userId),
+            eq(teacherSubjectAssignments.classId, classId),
+            eq(teacherSubjectAssignments.subjectId, subjectId)
+          )
+        )
+        .limit(1);
 
-    const validStudentIdSet = new Set(validStudents.map((student: any) => student._id.toString()));
-    const invalidStudent = normalizedEntries.find((entry: any) => !validStudentIdSet.has(entry.studentId));
-
-    if (invalidStudent) {
-      return NextResponse.json({ error: "One or more students are not in the selected class" }, { status: 400 });
-    }
-
-    let created = 0;
-    let updated = 0;
-
-    for (const entry of normalizedEntries) {
-      const existing = await DailyMark.findOne({
-        schoolId: user.schoolId,
-        studentId: entry.studentId,
-        subjectId,
-        classId,
-        teacherId: user.userId,
-        academicYearId,
-        termId: activeTerm._id,
-        assessmentType
-      }).select("_id");
-
-      if (existing) {
-        await DailyMark.findByIdAndUpdate(existing._id, {
-          $set: {
-            score: entry.score,
-            maxScore,
-            feedbackNotes: entry.notes,
-            lastModifiedBy: user.userId,
-            recordedDate: new Date()
-          }
-        });
-        updated += 1;
-      } else {
-        await DailyMark.create({
-          schoolId: user.schoolId,
-          studentId: entry.studentId,
-          subjectId,
-          classId,
-          teacherId: user.userId,
-          assessmentType,
-          score: entry.score,
-          maxScore,
-          feedbackNotes: entry.notes,
-          recordedDate: new Date(),
-          recordedBy: user.userId,
-          academicYearId,
-          termId: activeTerm._id,
-          modificationHistory: []
-        });
-        created += 1;
+      if (!allowedRows[0]) {
+        return NextResponse.json({ error: "Forbidden: subject/class not assigned" }, { status: 403 });
       }
     }
 
-    return NextResponse.json({
-      message: "Marks saved successfully",
-      summary: {
-        created,
-        updated,
-        totalProcessed: normalizedEntries.length
+    let activeTerm = academicYearId
+      ? await d1
+          .select({ id: terms.id, sessionId: terms.sessionId })
+          .from(terms)
+          .where(and(eq(terms.schoolId, user.schoolId), eq(terms.sessionId, academicYearId), eq(terms.isCurrent, true)))
+          .limit(1)
+      : [];
+
+    if (!activeTerm[0]) {
+      activeTerm = await d1
+        .select({ id: terms.id, sessionId: terms.sessionId })
+        .from(terms)
+        .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
+        .limit(1);
+    }
+
+    if (!activeTerm[0]) {
+      return NextResponse.json({ error: "No active term found" }, { status: 400 });
+    }
+
+    const termInfoRows = await d1
+      .select({ id: terms.id, isPaid: terms.isPaid, isClosed: terms.isClosed })
+      .from(terms)
+      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.id, activeTerm[0].id)))
+      .limit(1);
+
+    if (!termInfoRows[0]?.isPaid) {
+      return NextResponse.json({ error: "Current term is not paid" }, { status: 400 });
+    }
+
+    if (termInfoRows[0].isClosed) {
+      return NextResponse.json({ error: "Current term is closed" }, { status: 400 });
+    }
+
+    const termId = activeTerm[0].id;
+    const sessionId = activeTerm[0].sessionId;
+    const now = new Date();
+
+    let totalInserted = 0;
+    let totalUpdated = 0;
+
+    await d1.transaction(async (tx) => {
+      for (const entry of entries) {
+        const studentId = String(entry?.studentId || "").trim();
+        const score = Number(entry?.score);
+        const notes = String(entry?.notes || "").trim();
+
+        if (!studentId || !Number.isFinite(score)) {
+          continue;
+        }
+
+        const existing = await tx
+          .select({ id: dailyMarks.id })
+          .from(dailyMarks)
+          .where(
+            and(
+              eq(dailyMarks.schoolId, user.schoolId),
+              eq(dailyMarks.studentId, studentId),
+              eq(dailyMarks.classId, classId),
+              eq(dailyMarks.subjectId, subjectId),
+              eq(dailyMarks.termId, termId),
+              eq(dailyMarks.assessmentType, type),
+              eq(dailyMarks.isDeleted, false)
+            )
+          )
+          .limit(1);
+
+        if (existing[0]) {
+          await tx
+            .update(dailyMarks)
+            .set({
+              score,
+              maxScore,
+              weightage: 1,
+              feedbackNotes: notes || null,
+              lastModifiedBy: user.userId,
+              updatedAt: now,
+            })
+            .where(eq(dailyMarks.id, existing[0].id));
+          totalUpdated += 1;
+        } else {
+          await tx.insert(dailyMarks).values({
+            id: crypto.randomUUID(),
+            schoolId: user.schoolId,
+            studentId,
+            subjectId,
+            classId,
+            sectionId: null,
+            teacherId: user.userId,
+            sessionId,
+            termId,
+            assessmentType: type,
+            score,
+            maxScore,
+            weightage: 1,
+            feedbackNotes: notes || null,
+            modificationHistoryJson: "[]",
+            recordedDate: now,
+            recordedBy: user.userId,
+            lastModifiedBy: user.userId,
+            isDeleted: false,
+            createdAt: now,
+            updatedAt: now,
+          });
+          totalInserted += 1;
+        }
       }
     });
-  } catch (error: any) {
+
+    await d1.insert(auditLogs).values({
+      id: crypto.randomUUID(),
+      schoolId: user.schoolId,
+      actorId: user.userId,
+      action: "DAILY_MARKS_BULK_UPSERT",
+      metaJson: JSON.stringify({
+        classId,
+        subjectId,
+        type,
+        termId,
+        sessionId,
+        requestedEntries: entries.length,
+        inserted: totalInserted,
+        updated: totalUpdated,
+      }),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    invalidateServerCacheByPrefix(`parents:class-ranking:${user.schoolId}:`);
+    invalidateServerCacheByPrefix(`parents:dashboard:${user.schoolId}:`);
+    invalidateServerCacheByPrefix(`reports:list:${user.schoolId}:`);
+
+    return NextResponse.json({
+      message: "Daily marks saved successfully",
+      summary: {
+        totalProcessed: totalInserted + totalUpdated,
+        inserted: totalInserted,
+        updated: totalUpdated,
+      },
+    });
+  } catch (error: unknown) {
     console.error("Bulk upsert daily marks error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to save marks" },
+      { error: error instanceof Error ? error.message : "Failed to save daily marks" },
       { status: 500 }
     );
   }
