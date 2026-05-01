@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     if (!activeTerm.isPaid) return NextResponse.json({ error: "Term subscription not paid" }, { status: 400 });
     if (activeTerm.isClosed) return NextResponse.json({ error: "Term is closed, scores cannot be modified" }, { status: 400 });
 
-    const validFields = ["classwork", "homework", "test", "exam", "extracurricular"];
+    const validFields = ["classwork", "homework", "test", "exam"];
     const field = validFields.includes(scoreType) ? scoreType : "exam";
 
     const existing = await Score.findOne({
@@ -57,10 +57,11 @@ export async function POST(req: Request) {
       homework: (currentScores as Record<string, number>).homework ?? 0,
       test: (currentScores as Record<string, number>).test ?? 0,
       exam: (currentScores as Record<string, number>).exam ?? 0,
-      extracurricular: (currentScores as Record<string, number>).extracurricular ?? 0,
       [field]: scoreValue,
     };
-    const total = Object.values(updatedScores).reduce((a, b) => a + b, 0);
+    const total = updatedScores.classwork + updatedScores.homework + updatedScores.test + updatedScores.exam;
+    const t = total;
+    const grade = t >= 75 ? "A1" : t >= 70 ? "B2" : t >= 65 ? "B3" : t >= 60 ? "C4" : t >= 55 ? "C5" : t >= 50 ? "C6" : t >= 45 ? "D7" : t >= 40 ? "E8" : "F9";
 
     const updated = await Score.findOneAndUpdate(
       {
@@ -70,11 +71,11 @@ export async function POST(req: Request) {
         term: activeTerm.termNumber,
         academicYearId: activeTerm.academicYearId,
       },
-      { $set: { ...updatedScores, total, teacherId: new mongoose.Types.ObjectId(teacher.userId) } },
+      { $set: { ...updatedScores, total, grade, teacherId: new mongoose.Types.ObjectId(teacher.userId) } },
       { upsert: true, new: true }
     );
 
-    return NextResponse.json({ message: "Score uploaded successfully", scoreId: updated._id.toString(), total, score: total });
+    return NextResponse.json({ message: "Score uploaded successfully", scoreId: updated._id.toString(), total, grade, score: total });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to upload score" }, { status: 500 });
   }

@@ -68,6 +68,7 @@ export async function GET(req: Request) {
           test: s.test ?? null,
           exam: s.exam ?? null,
           total: s.total ?? null,
+          grade: (s as Record<string, unknown>).grade ?? null,
           score: s.total ?? null,
         };
       }),

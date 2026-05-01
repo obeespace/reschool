@@ -25,8 +25,8 @@ export default function ClassesPage() {
     arm: "",
   });
 
-  const levels = ["JSS1", "JSS2", "JSS3", "SSS1", "SSS2", "SSS3"];
-  const arms = ["A", "B", "C"];
+  const levels = ["Creche", "Nursery 1", "Nursery 2", "KG", "Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6", "JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"];
+  const arms = ["A", "B", "C", "D", "E", "Gold", "Silver", "Diamond", "Science", "Arts", "Commercial"];
 
   useEffect(() => {
     const token = localStorage.getItem("token");

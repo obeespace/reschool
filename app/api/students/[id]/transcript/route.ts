@@ -47,6 +47,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         test: s.test,
         exam: s.exam,
         total: s.total,
+        grade: (s as Record<string, unknown>).grade,
       })),
       reportCards: reportCards.map((r) => ({
         _id: r._id.toString(),

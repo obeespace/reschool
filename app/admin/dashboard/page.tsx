@@ -391,7 +391,7 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
                 <div>
                   <div className="font-medium text-gray-900 text-sm">Total Classes</div>
-                  <div className="text-xs text-gray-600 mt-0.5">JSS1-3, SSS1-3 (A, B, C arms)</div>
+                  <div className="text-xs text-gray-600 mt-0.5">Creche – SS3 (customisable arms)</div>
                 </div>
                 <span className="text-2xl font-bold text-indigo-600">18</span>
               </div>
@@ -443,7 +443,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">Class created</p>
-                  <p className="text-xs text-gray-600 mt-0.5">SSS3C has been set up</p>
+                  <p className="text-xs text-gray-600 mt-0.5">SS3C has been set up</p>
                   <p className="text-xs text-gray-500 mt-1">1 day ago</p>
                 </div>
               </div>

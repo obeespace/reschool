@@ -12,8 +12,8 @@ export interface IClass extends Document {
 const ClassSchema = new Schema<IClass>(
   {
     schoolId: { type: Schema.Types.ObjectId, ref: "School", required: true },
-    level: { type: String, enum: ["JSS1","JSS2","JSS3","SSS1","SSS2","SSS3"], required: true },
-    arm: { type: String, enum: ["A","B","C"], required: true },
+    level: { type: String, required: true },
+    arm: { type: String, required: true },
     classTeacherId: { type: Schema.Types.ObjectId, ref: "User", default: null },
     studentIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     subjectIds: [{ type: Schema.Types.ObjectId, ref: "Subject" }]

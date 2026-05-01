@@ -9,8 +9,24 @@ const StudentSchema = new Schema(
     gender: { type: String, enum: ["Male", "Female"], required: false },
     parentId: { type: Types.ObjectId, ref: "User", required: false },
     currentClassId: { type: Types.ObjectId, ref: "Class", required: true },
+    photoUrl: { type: String },
+
+    // SS stream (set after JSS3 AI recommendation)
+    track: { type: String, enum: ["SCIENCE", "ARTS", "COMMERCIAL"], required: false },
+
+    // House system (for schools that run inter-house competitions)
+    house: { type: String, required: false },
+
     isPrefect: { type: Boolean, default: false },
     prefectTitle: { type: String, required: false },
+
+    // Medical / health record
+    bloodGroup: { type: String, enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"], required: false },
+    genotype: { type: String, enum: ["AA", "AS", "SS", "AC", "SC"], required: false },
+    allergies: [{ type: String }],
+    medicalConditions: [{ type: String }],
+    emergencyContactName: { type: String },
+    emergencyContactPhone: { type: String },
     
     // Suspension history (array for multiple suspensions)
     suspensionHistory: [

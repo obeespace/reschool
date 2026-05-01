@@ -33,6 +33,7 @@ export async function GET(req: Request) {
         test: s.test,
         exam: s.exam,
         total: s.total,
+        grade: (s as Record<string, unknown>).grade,
       }))
     });
   } catch (error: unknown) {
