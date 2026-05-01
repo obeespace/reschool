@@ -1,82 +1,66 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { reportCards, sessions, terms } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getParentWardData } from "@/app/utils/schoolRelationships";
-import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
+import connectDB from "@/app/utils/db";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import Student from "@/app/models/Students";
+import Term from "@/app/models/Term";
+import AcademicYear from "@/app/models/AcademicYear";
+import ReportCard from "@/app/models/ReportCard";
+import Class from "@/app/models/Class";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const parent: ITokenPayload | null = verifyToken(token || "");
+    if (!parent || parent.role !== "PARENT") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!parent || parent.role !== "PARENT") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(parent.schoolId);
+    const parentId = new mongoose.Types.ObjectId(parent.userId);
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
+    const activeYear = activeTerm
+      ? await AcademicYear.findOne({ schoolId, _id: activeTerm.academicYearId }).lean()
+      : null;
 
-    const payload = await getOrSetServerCache({
-      key: `parents:dashboard:${parent.schoolId}:${parent.userId}`,
-      ttlMs: 45_000,
-      bypass: shouldBypassServerCache(req),
-      factory: async () => {
-        const activeTerm = await d1
-          .select({ id: terms.id, termNumber: terms.termNumber, sessionId: terms.sessionId })
-          .from(terms)
-          .where(and(eq(terms.schoolId, parent.schoolId), eq(terms.isCurrent, true)))
-          .limit(1);
+    const wardLinks = await ParentWardLink.find({ schoolId, parentId }).lean();
+    const wardIds = wardLinks.map((w) => w.studentId);
 
-        const activeSession = activeTerm[0]
-          ? await d1
-              .select({ year: sessions.year })
-              .from(sessions)
-              .where(eq(sessions.id, activeTerm[0].sessionId))
-              .limit(1)
-          : [];
+    const wardStudents = wardIds.length
+      ? await Student.find({ schoolId, _id: { $in: wardIds } }).lean()
+      : [];
 
-        const wards = await getParentWardData(d1, parent.schoolId, parent.userId);
-        const wardIds = wards.map((ward) => ward.id).filter(Boolean);
+    const classIds = [...new Set(wardStudents.map((s) => s.currentClassId?.toString()).filter(Boolean))];
+    const classMap = classIds.length
+      ? new Map((await Class.find({ _id: { $in: classIds } }).lean()).map((c) => [c._id.toString(), c]))
+      : new Map();
 
-        const reportCount = activeTerm[0] && wardIds.length
-          ? (
-              await d1
-                .select({ id: reportCards.id })
-                .from(reportCards)
-                .where(
-                  and(
-                    eq(reportCards.schoolId, parent.schoolId),
-                    inArray(reportCards.studentId, wardIds),
-                    eq(reportCards.termId, activeTerm[0].id)
-                  )
-                )
-            ).length
-          : 0;
+    const wards = wardStudents.map((s) => ({
+      id: s._id.toString(),
+      fullName: s.fullName,
+      admissionNumber: s.admissionNumber,
+      dateOfBirth: s.dateOfBirth,
+      gender: s.gender,
+      className: s.currentClassId ? (classMap.get(s.currentClassId.toString()) as { level?: string; arm?: string } | undefined)
+        ? ((classMap.get(s.currentClassId.toString()) as { level?: string; arm?: string })!.level + " " + (classMap.get(s.currentClassId.toString()) as { level?: string; arm?: string })!.arm).trim()
+        : null : null,
+    }));
 
-        return {
-          wards,
-          stats: {
-            wardsCount: wards.length,
-            activeTerm:
-              activeTerm[0] && activeSession[0]
-                ? `${activeSession[0].year} T${activeTerm[0].termNumber}`
-                : "N/A",
-            reportsAvailable: reportCount,
-          },
-        };
+    const reportCount =
+      activeTerm && wardIds.length
+        ? await ReportCard.countDocuments({ schoolId, studentId: { $in: wardIds }, termId: activeTerm._id, approvedBy: { $ne: null } })
+        : 0;
+
+    return NextResponse.json({
+      wards,
+      stats: {
+        wardsCount: wards.length,
+        activeTerm: activeTerm && activeYear ? `${activeYear.name} T${activeTerm.termNumber}` : "N/A",
+        reportsAvailable: reportCount,
       },
     });
-
-    return NextResponse.json(payload);
   } catch (error: unknown) {
-    console.error("Parent dashboard error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch parent dashboard" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch parent dashboard" }, { status: 500 });
   }
 }

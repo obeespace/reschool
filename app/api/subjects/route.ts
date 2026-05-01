@@ -1,8 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { subjects } from "@/app/db/schema";
-import { eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Subject from "@/app/models/Subject";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
@@ -13,26 +13,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const rows = await d1
-      .select()
-      .from(subjects)
-      .where(eq(subjects.schoolId, user.schoolId));
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    const rows = await Subject.find({ schoolId }).lean();
 
     return NextResponse.json({
       subjects: rows.map((row) => ({
-        _id: row.id,
-        id: row.id,
+        _id: (row._id as mongoose.Types.ObjectId).toString(),
+        id: (row._id as mongoose.Types.ObjectId).toString(),
         name: row.name,
-        code: row.name
-          .split(/\s+/)
-          .map((part) => part[0]?.toUpperCase() || "")
-          .join("")
-          .slice(0, 6),
+        code: row.code || row.name.split(/\s+/).map((p: string) => p[0]?.toUpperCase() || "").join("").slice(0, 6),
       })),
     });
   } catch (error: unknown) {
@@ -53,35 +43,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const body = await req.json();
     const name = String(body?.name || "").trim();
-
     if (!name) {
       return NextResponse.json({ error: "Subject name is required" }, { status: 400 });
     }
 
-    const now = new Date();
-    const subjectId = crypto.randomUUID();
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
+    const existing = await Subject.findOne({ schoolId, name }).lean();
+    if (existing) {
+      return NextResponse.json({
+        message: "Subject already exists",
+        subject: {
+          _id: (existing._id as mongoose.Types.ObjectId).toString(),
+          id: (existing._id as mongoose.Types.ObjectId).toString(),
+          name: existing.name,
+        },
+      });
+    }
 
-    await d1.insert(subjects).values({
-      id: subjectId,
-      schoolId: admin.schoolId,
-      name,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const code = name.split(/\s+/).map((p: string) => p[0]?.toUpperCase() || "").join("").slice(0, 6);
+    const subject = await Subject.create({ schoolId, name, code });
 
     return NextResponse.json({
       message: "Subject created successfully",
       subject: {
-        _id: subjectId,
-        id: subjectId,
-        name,
+        _id: (subject._id as mongoose.Types.ObjectId).toString(),
+        id: (subject._id as mongoose.Types.ObjectId).toString(),
+        name: subject.name,
+        code: subject.code,
       },
     });
   } catch (error: unknown) {

@@ -1,8 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
@@ -14,24 +14,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const { termId } = await req.json();
     if (!termId) {
       return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
     }
 
-    const now = new Date();
-    const updated = await d1
-      .update(terms)
-      .set({ isClosed: true, isCurrent: false, updatedAt: now })
-      .where(and(eq(terms.id, termId), eq(terms.schoolId, admin.schoolId)))
-      .returning({ id: terms.id });
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
+    const updated = await Term.findOneAndUpdate(
+      { _id: termId, schoolId },
+      { isClosed: true, isActive: false },
+      { new: true }
+    );
 
-    if (!updated.length) {
+    if (!updated) {
       return NextResponse.json({ error: "Term not found" }, { status: 404 });
     }
 
@@ -43,7 +39,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       message: "Term closed successfully. No further edits allowed.",
-      termId: updated[0].id,
+      termId: (updated._id as mongoose.Types.ObjectId).toString(),
     });
   } catch (error: unknown) {
     console.error("Close term error:", error);

@@ -1,77 +1,53 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { dailyMarks, subjects, terms } from "@/app/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { getParentWardData } from "@/app/utils/schoolRelationships";
+import connectDB from "@/app/utils/db";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import DailyMark from "@/app/models/DailyMark";
+import Subject from "@/app/models/Subject";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const parent: ITokenPayload | null = verifyToken(token || "");
-
-    if (!parent || parent.role !== "PARENT") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const wards = await getParentWardData(d1, parent.schoolId, parent.userId);
-    const wardIds = wards.map((ward) => ward.id).filter(Boolean);
-    if (!wardIds.length) {
-      return NextResponse.json({ dailyMarks: [] });
-    }
+    if (!parent || parent.role !== "PARENT") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const studentId = String(searchParams.get("studentId") || "").trim();
-    const filterStudentIds = studentId && wardIds.includes(studentId) ? [studentId] : wardIds;
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(parent.schoolId);
+    const parentId = new mongoose.Types.ObjectId(parent.userId);
 
-    const rows = await d1
-      .select({
-        id: dailyMarks.id,
-        studentId: dailyMarks.studentId,
-        subjectId: dailyMarks.subjectId,
-        subjectName: subjects.name,
-        score: dailyMarks.score,
-        maxScore: dailyMarks.maxScore,
-        assessmentType: dailyMarks.assessmentType,
-        feedbackNotes: dailyMarks.feedbackNotes,
-        recordedDate: dailyMarks.recordedDate,
-        termNumber: terms.termNumber,
-      })
-      .from(dailyMarks)
-      .innerJoin(subjects, eq(dailyMarks.subjectId, subjects.id))
-      .innerJoin(terms, eq(dailyMarks.termId, terms.id))
-      .where(
-        and(
-          eq(dailyMarks.schoolId, parent.schoolId),
-          eq(dailyMarks.isDeleted, false),
-          inArray(dailyMarks.studentId, filterStudentIds)
-        )
-      )
-      .orderBy(desc(dailyMarks.recordedDate));
+    const wardLinks = await ParentWardLink.find({ schoolId, parentId }).lean();
+    const wardIds = wardLinks.map((w) => w.studentId);
+    if (!wardIds.length) return NextResponse.json({ dailyMarks: [] });
+
+    const termId = searchParams.get("termId");
+    const studentId = searchParams.get("studentId");
+    const termFilter = termId
+      ? await Term.findOne({ schoolId, _id: new mongoose.Types.ObjectId(termId) }).lean()
+      : await Term.findOne({ schoolId, isActive: true }).lean();
+
+    const filter: Record<string, unknown> = { schoolId, studentId: { $in: studentId ? [new mongoose.Types.ObjectId(studentId)] : wardIds } };
+    if (termFilter) filter.termId = termFilter._id;
+
+    const marks = await DailyMark.find(filter).sort({ assessmentDate: -1 }).lean();
+    const subjectIds = [...new Set(marks.map((m) => m.subjectId.toString()))];
+    const subjects = subjectIds.length ? await Subject.find({ _id: { $in: subjectIds } }).lean() : [];
+    const subjectMap = new Map(subjects.map((s) => [s._id.toString(), s.name]));
 
     return NextResponse.json({
-      dailyMarks: rows.map((row) => ({
-        _id: row.id,
-        studentId: row.studentId,
-        subjectId: { _id: row.subjectId, name: row.subjectName },
-        score: row.score,
-        maxScore: row.maxScore,
-        type: row.assessmentType,
-        feedbackNotes: row.feedbackNotes,
-        recordedDate: row.recordedDate,
-        term: row.termNumber,
+      dailyMarks: marks.map((m) => ({
+        _id: m._id.toString(),
+        studentId: m.studentId.toString(),
+        subjectId: m.subjectId.toString(),
+        subjectName: subjectMap.get(m.subjectId.toString()) || "Unknown",
+        assessmentType: m.assessmentType,
+        score: m.score,
+        assessmentDate: m.assessmentDate,
       })),
     });
   } catch (error: unknown) {
-    console.error("Parent daily marks error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch daily marks" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch parent daily marks" }, { status: 500 });
   }
 }

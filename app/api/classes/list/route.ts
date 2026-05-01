@@ -1,25 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { classes } from "@/app/db/schema";
-import { eq } from "drizzle-orm";
-import { getClassSubjectIds } from "@/app/utils/schoolRelationships";
-
-function splitLevelAndArm(className: string, fallbackLevel: string) {
-  const normalized = String(className || "").trim();
-  const parts = normalized.split(/\s+/).filter(Boolean);
-
-  if (parts.length >= 2) {
-    const arm = parts[parts.length - 1].toUpperCase();
-    const level = parts.slice(0, -1).join(" ") || fallbackLevel;
-    return { level, arm };
-  }
-
-  return {
-    level: fallbackLevel || normalized,
-    arm: "A",
-  };
-}
+import connectDB from "@/app/utils/db";
+import ClassModel from "@/app/models/Class";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
@@ -30,32 +13,20 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    const rows = await ClassModel.find({ schoolId }).lean();
 
-    const rows = await d1
-      .select()
-      .from(classes)
-      .where(eq(classes.schoolId, user.schoolId));
-
-    const classIds = rows.map((row) => row.id);
-    const classSubjectsMap = await getClassSubjectIds(d1, user.schoolId, classIds);
-
-    const payload = rows.map((row) => {
-      const parsed = splitLevelAndArm(row.name, row.level);
-      return {
-        _id: row.id,
-        id: row.id,
-        name: row.name,
-        level: parsed.level,
-        arm: parsed.arm,
-        subjectIds: classSubjectsMap.get(row.id) || [],
-      };
+    return NextResponse.json({
+      classes: rows.map((row) => ({
+        _id: (row._id as mongoose.Types.ObjectId).toString(),
+        id: (row._id as mongoose.Types.ObjectId).toString(),
+        name: `${row.level} ${row.arm}`,
+        level: row.level,
+        arm: row.arm,
+        subjectIds: (row.subjectIds || []).map((id: mongoose.Types.ObjectId) => id.toString()),
+      })),
     });
-
-    return NextResponse.json({ classes: payload });
   } catch (error: unknown) {
     console.error("Fetch classes error:", error);
     return NextResponse.json(

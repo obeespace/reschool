@@ -1,13 +1,10 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { students } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import mongoose from "mongoose";
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
@@ -21,14 +18,9 @@ export async function DELETE(
       return NextResponse.json({ error: "Student id is required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    await d1
-      .delete(students)
-      .where(and(eq(students.id, id), eq(students.schoolId, user.schoolId)));
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    await Student.findOneAndDelete({ _id: id, schoolId });
 
     return NextResponse.json({ message: "Student deleted successfully" });
   } catch (error: unknown) {

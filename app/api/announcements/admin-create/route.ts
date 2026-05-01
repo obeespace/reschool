@@ -1,61 +1,34 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { announcements } from "@/app/db/schema";
+import connectDB from "@/app/utils/db";
+import Announcement from "@/app/models/Announcements";
+import mongoose from "mongoose";
 
 export async function POST(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const admin: ITokenPayload | null = verifyToken(token || "");
-
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    if (!admin || admin.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
     const body = await req.json();
     const title = String(body?.title || "").trim();
     const message = String(body?.message || "").trim();
-    const targetAudience =
-      body?.targetAudience === "TEACHERS_ONLY" || body?.targetAudience === "PARENTS_ONLY"
-        ? body.targetAudience
-        : "ALL";
+    const targetAudience = ["TEACHERS_ONLY", "PARENTS_ONLY"].includes(body?.targetAudience) ? body.targetAudience : "ALL";
+    if (!title || !message) return NextResponse.json({ error: "Title and message are required" }, { status: 400 });
 
-    if (!title || !message) {
-      return NextResponse.json({ error: "Title and message are required" }, { status: 400 });
-    }
-
-    const now = new Date();
-    const announcementId = crypto.randomUUID();
-
-    await d1.insert(announcements).values({
-      id: announcementId,
-      schoolId: admin.schoolId,
-      createdBy: admin.userId,
+    await connectDB();
+    const doc = await Announcement.create({
+      schoolId: new mongoose.Types.ObjectId(admin.schoolId),
+      postedBy: new mongoose.Types.ObjectId(admin.userId),
       announcementType: "GENERAL",
       targetAudience,
       classId: null,
       title,
       message,
-      createdDate: now,
-      createdAt: now,
-      updatedAt: now,
     });
 
-    return NextResponse.json({
-      message: "Announcement created successfully",
-      announcementId,
-      storageMode: "announcements-table",
-    });
+    return NextResponse.json({ message: "Announcement created successfully", announcementId: doc._id.toString(), storageMode: "mongodb" });
   } catch (error: unknown) {
-    console.error("Create admin announcement error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create announcement" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to create announcement" }, { status: 500 });
   }
 }

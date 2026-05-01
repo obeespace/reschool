@@ -1,89 +1,77 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { buildTeacherRewardsLeaderboard } from "@/app/utils/teacherRewards";
+import connectDB from "@/app/utils/db";
+import TeacherRewardWinners from "@/app/models/TeacherRewardWinners";
+import TeacherActivity from "@/app/models/TeacherActivity";
+import Term from "@/app/models/Term";
+import User from "@/app/models/User";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
-
-    if (!user || (user.role !== "ADMIN" && user.role !== "TEACHER")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const termIdQuery = String(searchParams.get("termId") || "").trim();
-    const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit") || 5)));
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const resolvedTermId = termIdQuery
-      ? termIdQuery
-      : (
-          await d1
-            .select({ id: terms.id })
-            .from(terms)
-            .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-            .limit(1)
-        )[0]?.id;
-
-    if (!resolvedTermId) {
-      return NextResponse.json({ leaderboard: [], termId: null });
+    let termId;
+    const termIdQ = searchParams.get("termId");
+    if (termIdQ) {
+      const t = await Term.findOne({ schoolId, _id: new mongoose.Types.ObjectId(termIdQ) }).lean();
+      termId = t?._id;
+    } else {
+      const t = await Term.findOne({ schoolId, isActive: true }).lean();
+      termId = t?._id;
     }
 
-    const fullRanked = await buildTeacherRewardsLeaderboard(d1, user.schoolId, resolvedTermId, 1000);
-    const ranked = fullRanked.slice(0, limit);
-    const self = user.role === "TEACHER"
-      ? fullRanked.find((entry) => entry.teacherId === user.userId) || null
-      : null;
+    if (!termId) return NextResponse.json({ leaderboard: [] });
+
+    const winners = await TeacherRewardWinners.find({ schoolId, termId }).sort({ rank: 1 }).lean();
+    if (winners.length > 0) {
+      const teacherIds = winners.map((w) => w.teacherId);
+      const teachers = await User.find({ _id: { $in: teacherIds } }).select("_id fullName").lean();
+      const teacherMap = new Map(teachers.map((t) => [t._id.toString(), t.fullName]));
+      return NextResponse.json({
+        leaderboard: winners.map((w) => ({
+          rank: w.rank,
+          teacherId: w.teacherId.toString(),
+          teacherName: teacherMap.get(w.teacherId.toString()) || "Unknown",
+          points: w.points,
+          breakdown: w.breakdown,
+        })),
+        termId: termId.toString(),
+        finalized: true,
+      });
+    }
+
+    // Live leaderboard from activities
+    const activities = await TeacherActivity.find({ schoolId, termId }).lean();
+    const pointsByTeacher = new Map<string, number>();
+    for (const act of activities) {
+      const tid = act.teacherId.toString();
+      pointsByTeacher.set(tid, (pointsByTeacher.get(tid) || 0) + (act.points || 1));
+    }
+
+    const ranked = [...pointsByTeacher.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const teacherIds = ranked.map(([tid]) => new mongoose.Types.ObjectId(tid));
+    const teachers = teacherIds.length ? await User.find({ _id: { $in: teacherIds } }).select("_id fullName").lean() : [];
+    const teacherMap = new Map(teachers.map((t) => [t._id.toString(), t.fullName]));
 
     return NextResponse.json({
-      termId: resolvedTermId,
-      leaderboard: ranked,
-      self,
-      totalTeachersRanked: fullRanked.length,
-      scoringModel: {
-        period: "term",
-        topWinners: 5,
-        signals: [
-          "daily_marks",
-          "attendance_updates",
-          "teacher_remarks",
-          "announcements",
-          "app_activity_events",
-          "frequency",
-          "timeliness",
-          "consistency",
-        ],
-      },
+      leaderboard: ranked.map(([tid, points], index) => ({
+        rank: index + 1,
+        teacherId: tid,
+        teacherName: teacherMap.get(tid) || "Unknown",
+        points,
+        breakdown: {},
+      })),
+      termId: termId.toString(),
+      finalized: false,
     });
   } catch (error: unknown) {
-    console.error("Teacher leaderboard error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load teacher leaderboard" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch leaderboard" }, { status: 500 });
   }
-}
-
-export async function POST(req: Request) {
-  return GET(req);
-}
-
-export async function PUT() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
-}
-
-export async function PATCH() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
-}
-
-export async function DELETE() {
-  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }

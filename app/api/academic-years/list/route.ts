@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { sessions, terms } from "@/app/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
 
 export async function GET(req: Request) {
@@ -14,50 +15,39 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
+    await connectDB();
     const bypassCache = shouldBypassServerCache(req);
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+
     const payload = await getOrSetServerCache({
       key: `academic-years:list:${user.schoolId}`,
       ttlMs: 20_000,
       bypass: bypassCache,
       factory: async () => {
-        const [dbSessions, currentTerms] = await Promise.all([
-          d1
-            .select()
-            .from(sessions)
-            .where(eq(sessions.schoolId, user.schoolId))
-            .orderBy(desc(sessions.startDate)),
-          d1
-            .select({ sessionId: terms.sessionId, termNumber: terms.termNumber })
-            .from(terms)
-            .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true))),
+        const [dbYears, activeTerms] = await Promise.all([
+          AcademicYear.find({ schoolId }).sort({ startDate: -1 }).lean(),
+          Term.find({ schoolId, isActive: true }).select("academicYearId termNumber").lean(),
         ]);
 
-        const currentTermBySession = new Map(
-          currentTerms.map((term) => [term.sessionId, term.termNumber])
+        const activeTermByYear = new Map(
+          activeTerms.map((t) => [(t.academicYearId as mongoose.Types.ObjectId).toString(), t.termNumber])
         );
 
         return {
-          academicYears: dbSessions.map((session) => ({
-            id: session.id,
-            name: session.year,
-            startDate: session.startDate,
-            endDate: session.endDate,
-            isActive: session.isCurrent,
-            term: currentTermBySession.get(session.id) ?? 1,
+          academicYears: dbYears.map((y) => ({
+            id: (y._id as mongoose.Types.ObjectId).toString(),
+            name: y.name,
+            startDate: y.startDate,
+            endDate: y.endDate,
+            isActive: y.isActive,
+            term: activeTermByYear.get((y._id as mongoose.Types.ObjectId).toString()) ?? 1,
           })),
         };
       },
     });
 
     return NextResponse.json(payload, {
-      headers: {
-        "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
-      },
+      headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=30" },
     });
   } catch (error: unknown) {
     console.error("Fetch academic years error:", error);

@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { sessions, terms as d1Terms } from "@/app/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
+import AcademicYear from "@/app/models/AcademicYear";
+import mongoose from "mongoose";
 import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
 
 export async function GET(req: Request) {
@@ -14,83 +15,57 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
+    await connectDB();
     const { searchParams } = new URL(req.url);
     const academicYearId = searchParams.get("academicYearId");
     const onlyPaid = searchParams.get("onlyPaid") === "true";
     const bypassCache = shouldBypassServerCache(req);
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
     const payload = await getOrSetServerCache({
       key: `terms:list:${user.schoolId}:${academicYearId || "all"}:${onlyPaid ? "paid" : "all"}`,
       ttlMs: 15_000,
       bypass: bypassCache,
       factory: async () => {
-        const whereClauses = [eq(d1Terms.schoolId, user.schoolId)];
-        if (academicYearId) {
-          whereClauses.push(eq(d1Terms.sessionId, academicYearId));
-        }
-        if (onlyPaid) {
-          whereClauses.push(eq(d1Terms.isPaid, true));
-        }
+        const filter: Record<string, unknown> = { schoolId };
+        if (academicYearId) filter.academicYearId = new mongoose.Types.ObjectId(academicYearId);
+        if (onlyPaid) filter.isPaid = true;
 
-        const dbTerms = await d1
-          .select()
-          .from(d1Terms)
-          .where(and(...whereClauses))
-          .orderBy(desc(d1Terms.startDate));
-
-        const sessionIds = [...new Set(dbTerms.map((term) => term.sessionId))];
-        const dbSessions = sessionIds.length
-          ? await d1
-              .select({ id: sessions.id, year: sessions.year })
-              .from(sessions)
-              .where(inArray(sessions.id, sessionIds))
+        const dbTerms = await Term.find(filter).sort({ startDate: -1 }).lean();
+        const yearIds = [...new Set(dbTerms.map((t) => (t.academicYearId as mongoose.Types.ObjectId).toString()))];
+        const dbYears = yearIds.length
+          ? await AcademicYear.find({ _id: { $in: yearIds } }).select("name").lean()
           : [];
-
-        const sessionMap = new Map(dbSessions.map((session) => [session.id, session.year]));
+        const yearMap = new Map(dbYears.map((y) => [(y._id as mongoose.Types.ObjectId).toString(), y.name]));
 
         return {
-          terms: dbTerms.map((term) => {
-            const sessionYear = sessionMap.get(term.sessionId);
-            return {
-              _id: term.id,
-              id: term.id,
-              schoolId: term.schoolId,
-              academicYearId: sessionYear
-                ? {
-                    _id: term.sessionId,
-                    name: sessionYear,
-                  }
-                : null,
-              termNumber: term.termNumber,
-              startDate: term.startDate,
-              endDate: term.endDate,
-              isActive: term.isCurrent,
-              isPaid: term.isPaid,
-              isClosed: term.isClosed,
-              paymentDate: term.paymentDate,
-              paymentReference: term.paymentReference,
-            };
-          }),
+          terms: dbTerms.map((t) => ({
+            _id: (t._id as mongoose.Types.ObjectId).toString(),
+            id: (t._id as mongoose.Types.ObjectId).toString(),
+            schoolId: (t.schoolId as mongoose.Types.ObjectId).toString(),
+            academicYearId: yearMap.has((t.academicYearId as mongoose.Types.ObjectId).toString())
+              ? { _id: (t.academicYearId as mongoose.Types.ObjectId).toString(), name: yearMap.get((t.academicYearId as mongoose.Types.ObjectId).toString()) }
+              : null,
+            termNumber: t.termNumber,
+            startDate: t.startDate,
+            endDate: t.endDate,
+            isActive: t.isActive,
+            isPaid: t.isPaid,
+            isClosed: t.isClosed,
+            paymentDate: t.paymentDate,
+            paymentReference: t.paymentReference,
+          })),
         };
       },
     });
 
     return NextResponse.json(payload, {
-      headers: {
-        "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
-      },
+      headers: { "Cache-Control": "private, max-age=15, stale-while-revalidate=30" },
     });
   } catch (error: unknown) {
     console.error("Fetch terms error:", error);
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Failed to fetch terms",
-      },
+      { error: error instanceof Error ? error.message : "Failed to fetch terms" },
       { status: 500 }
     );
   }

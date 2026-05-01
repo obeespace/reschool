@@ -1,81 +1,40 @@
-import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import {
-  admissionSettings,
-  classArms,
-  classes,
-  sessions,
-  subjects,
-  terms,
-} from "@/app/db/schema";
+import { NextResponse } from "next/server";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import Class from "@/app/models/Class";
+import Subject from "@/app/models/Subject";
+import AcademicYear from "@/app/models/AcademicYear";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: ITokenPayload | null = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
+    if (!user || user.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const [teachers, classes, subjects, academicYears] = await Promise.all([
+      User.countDocuments({ schoolId, role: "TEACHER" }),
+      Class.countDocuments({ schoolId }),
+      Subject.countDocuments({ schoolId }),
+      AcademicYear.countDocuments({ schoolId }),
+    ]);
 
-    const [sessionRows, currentTermRows, classRows, armRows, subjectRows, admissionRows] =
-      await Promise.all([
-        d1.select({ id: sessions.id }).from(sessions).where(eq(sessions.schoolId, admin.schoolId)).limit(1),
-        d1
-          .select({ id: terms.id })
-          .from(terms)
-          .where(and(eq(terms.schoolId, admin.schoolId), eq(terms.isCurrent, true)))
-          .limit(1),
-        d1.select({ id: classes.id }).from(classes).where(eq(classes.schoolId, admin.schoolId)).limit(1),
-        d1.select({ id: classArms.id }).from(classArms).where(eq(classArms.schoolId, admin.schoolId)).limit(1),
-        d1.select({ id: subjects.id }).from(subjects).where(eq(subjects.schoolId, admin.schoolId)).limit(1),
-        d1
-          .select({ id: admissionSettings.id })
-          .from(admissionSettings)
-          .where(eq(admissionSettings.schoolId, admin.schoolId))
-          .limit(1),
-      ]);
-
-    const status = {
-      hasSession: sessionRows.length > 0,
-      hasCurrentTerm: currentTermRows.length > 0,
-      hasClasses: classRows.length > 0,
-      hasArms: armRows.length > 0,
-      hasSubjects: subjectRows.length > 0,
-      hasAdmissionSettings: admissionRows.length > 0,
-    };
-
-    const isComplete = Object.values(status).every(Boolean);
-
+    const setupComplete = teachers > 0 && classes > 0 && subjects > 0 && academicYears > 0;
     return NextResponse.json({
-      isComplete,
-      status,
-      nextStep: !status.hasSession
-        ? 2
-        : !status.hasCurrentTerm
-        ? 3
-        : !status.hasClasses
-        ? 4
-        : !status.hasArms
-        ? 5
-        : !status.hasSubjects
-        ? 6
-        : !status.hasAdmissionSettings
-        ? 7
-        : 8,
+      setupComplete,
+      steps: {
+        hasTeachers: teachers > 0,
+        hasClasses: classes > 0,
+        hasSubjects: subjects > 0,
+        hasAcademicYears: academicYears > 0,
+      },
+      counts: { teachers, classes, subjects, academicYears },
     });
   } catch (error: unknown) {
-    console.error("Setup status error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch setup status" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch setup status" }, { status: 500 });
   }
 }

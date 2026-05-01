@@ -1,8 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { classArms, classes, sections } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import ClassModel from "@/app/models/Class";
+import mongoose from "mongoose";
 
 export async function POST(req: Request) {
   try {
@@ -13,11 +13,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const body = await req.json();
     const level = String(body?.level || "").trim().toUpperCase();
     const arm = String(body?.arm || "").trim().toUpperCase();
@@ -26,80 +21,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Level and arm are required" }, { status: 400 });
     }
 
-    const now = new Date();
-    const className = `${level} ${arm}`;
-    let classId = "";
-    const existingClass = await d1
-      .select({ id: classes.id })
-      .from(classes)
-      .where(and(eq(classes.schoolId, admin.schoolId), eq(classes.name, className)))
-      .limit(1);
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
+    const existing = await ClassModel.findOne({ schoolId, level, arm }).lean();
 
-    if (existingClass.length > 0) {
-      classId = existingClass[0].id;
-    } else {
-      classId = crypto.randomUUID();
-      await d1.insert(classes).values({
-        id: classId,
-        schoolId: admin.schoolId,
-        name: className,
-        level,
-        createdAt: now,
-        updatedAt: now,
+    if (existing) {
+      return NextResponse.json({
+        message: "Class already existed; section ensured",
+        className: `${level} ${arm}`,
+        class: {
+          _id: (existing._id as mongoose.Types.ObjectId).toString(),
+          id: (existing._id as mongoose.Types.ObjectId).toString(),
+          name: `${level} ${arm}`,
+          level,
+          arm,
+        },
       });
     }
 
-    let armId = "";
-    const existingArm = await d1
-      .select({ id: classArms.id })
-      .from(classArms)
-      .where(and(eq(classArms.schoolId, admin.schoolId), eq(classArms.name, arm)))
-      .limit(1);
-
-    if (existingArm.length > 0) {
-      armId = existingArm[0].id;
-    } else {
-      armId = crypto.randomUUID();
-      await d1.insert(classArms).values({
-        id: armId,
-        schoolId: admin.schoolId,
-        name: arm,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-
-    const existingSection = await d1
-      .select({ id: sections.id })
-      .from(sections)
-      .where(
-        and(
-          eq(sections.schoolId, admin.schoolId),
-          eq(sections.classId, classId),
-          eq(sections.armId, armId)
-        )
-      )
-      .limit(1);
-
-    if (existingSection.length === 0) {
-      await d1.insert(sections).values({
-        id: crypto.randomUUID(),
-        schoolId: admin.schoolId,
-        classId,
-        armId,
-        name: className,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
+    const cls = await ClassModel.create({ schoolId, level, arm, subjectIds: [], studentIds: [] });
 
     return NextResponse.json({
-      message: existingClass.length > 0 ? "Class already existed; section ensured" : "Class created successfully",
-      className,
+      message: "Class created successfully",
+      className: `${level} ${arm}`,
       class: {
-        _id: classId,
-        id: classId,
-        name: className,
+        _id: (cls._id as mongoose.Types.ObjectId).toString(),
+        id: (cls._id as mongoose.Types.ObjectId).toString(),
+        name: `${level} ${arm}`,
         level,
         arm,
       },

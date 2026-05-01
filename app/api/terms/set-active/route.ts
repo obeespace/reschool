@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { sessions, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
@@ -14,31 +15,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const { termId } = await req.json();
     if (!termId) {
       return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
     }
 
-    const targetTerm = await d1
-      .select({ id: terms.id, sessionId: terms.sessionId })
-      .from(terms)
-      .where(and(eq(terms.id, termId), eq(terms.schoolId, admin.schoolId)))
-      .limit(1);
-
-    if (!targetTerm.length) {
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
+    const targetTerm = await Term.findOne({ _id: termId, schoolId }).select("academicYearId").lean();
+    if (!targetTerm) {
       return NextResponse.json({ error: "Term not found" }, { status: 404 });
     }
 
-    const now = new Date();
-    await d1.update(terms).set({ isCurrent: false, updatedAt: now }).where(eq(terms.schoolId, admin.schoolId));
-    await d1.update(sessions).set({ isCurrent: false, updatedAt: now }).where(eq(sessions.schoolId, admin.schoolId));
-    await d1.update(terms).set({ isCurrent: true, updatedAt: now }).where(eq(terms.id, termId));
-    await d1.update(sessions).set({ isCurrent: true, updatedAt: now }).where(eq(sessions.id, targetTerm[0].sessionId));
+    await Term.updateMany({ schoolId }, { isActive: false });
+    await AcademicYear.updateMany({ schoolId }, { isActive: false });
+    await Term.findByIdAndUpdate(termId, { isActive: true });
+    await AcademicYear.findByIdAndUpdate(targetTerm.academicYearId, { isActive: true });
 
     invalidateServerCacheByPrefix(`terms:list:${admin.schoolId}:`);
     invalidateServerCacheByPrefix(`academic-years:list:${admin.schoolId}`);

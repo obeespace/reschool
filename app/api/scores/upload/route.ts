@@ -1,159 +1,81 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs, results, teacherSubjectAssignments, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
-
-type UploadEntry = {
-  studentId: string;
-  score: number;
-  sectionId?: string;
-};
+import connectDB from "@/app/utils/db";
+import Score from "@/app/models/Score";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 
 export async function POST(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
-
-    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const teacher: ITokenPayload | null = verifyToken(token || "");
+    if (!teacher || teacher.role !== "TEACHER") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
     const body = await req.json();
-    const classId = String(body?.classId || "").trim();
+    const studentId = String(body?.studentId || "").trim();
     const subjectId = String(body?.subjectId || "").trim();
-    const entries: UploadEntry[] = Array.isArray(body?.entries) ? body.entries : [];
+    const classId = String(body?.classId || "").trim();
+    const scoreValue = Number(body?.score);
+    const scoreType = String(body?.scoreType || "exam").toLowerCase(); // classwork|homework|test|exam
 
-    if (!classId || !subjectId || entries.length === 0) {
-      return NextResponse.json({ error: "classId, subjectId and entries are required" }, { status: 400 });
+    if (!studentId || !subjectId || !classId || !Number.isFinite(scoreValue)) {
+      return NextResponse.json({ error: "studentId, subjectId, classId, and score are required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
 
-    if (user.role === "TEACHER") {
-      const assignmentRows = await d1
-        .select({ id: teacherSubjectAssignments.id })
-        .from(teacherSubjectAssignments)
-        .where(
-          and(
-            eq(teacherSubjectAssignments.schoolId, user.schoolId),
-            eq(teacherSubjectAssignments.teacherId, user.userId),
-            eq(teacherSubjectAssignments.classId, classId),
-            eq(teacherSubjectAssignments.subjectId, subjectId)
-          )
-        )
-        .limit(1);
+    const profile = await TeacherProfile.findOne({ schoolId, userId: new mongoose.Types.ObjectId(teacher.userId) }).lean();
+    if (!profile) return NextResponse.json({ error: "Teacher profile not found" }, { status: 403 });
 
-      if (!assignmentRows[0]) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
-
-    const termRows = await d1
-      .select({ id: terms.id, sessionId: terms.sessionId, isPaid: terms.isPaid, isClosed: terms.isClosed })
-      .from(terms)
-      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
-
-    if (!termRows[0]) {
-      return NextResponse.json({ error: "No active term found" }, { status: 400 });
-    }
-
-    if (!termRows[0].isPaid) {
-      return NextResponse.json({ error: "Current term is not paid" }, { status: 400 });
-    }
-
-    if (termRows[0].isClosed) {
-      return NextResponse.json({ error: "Current term is closed" }, { status: 400 });
-    }
-
-    const now = new Date();
-    let inserted = 0;
-    let updated = 0;
-
-    await d1.transaction(async (tx) => {
-      for (const entry of entries) {
-        const studentId = String(entry?.studentId || "").trim();
-        const score = Number(entry?.score);
-        const sectionId = entry?.sectionId ? String(entry.sectionId).trim() : null;
-
-        if (!studentId || !Number.isFinite(score)) continue;
-
-        const existing = await tx
-          .select({ id: results.id })
-          .from(results)
-          .where(
-            and(
-              eq(results.schoolId, user.schoolId),
-              eq(results.studentId, studentId),
-              eq(results.subjectId, subjectId),
-              eq(results.classId, classId),
-              eq(results.sessionId, termRows[0].sessionId),
-              eq(results.termId, termRows[0].id)
-            )
-          )
-          .limit(1);
-
-        if (existing[0]) {
-          await tx
-            .update(results)
-            .set({ score, sectionId, updatedAt: now })
-            .where(eq(results.id, existing[0].id));
-          updated += 1;
-        } else {
-          await tx.insert(results).values({
-            id: crypto.randomUUID(),
-            schoolId: user.schoolId,
-            studentId,
-            subjectId,
-            classId,
-            sectionId,
-            sessionId: termRows[0].sessionId,
-            termId: termRows[0].id,
-            score,
-            createdAt: now,
-            updatedAt: now,
-          });
-          inserted += 1;
-        }
-      }
-    });
-
-    await d1.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      schoolId: user.schoolId,
-      actorId: user.userId,
-      action: "ACADEMIC_RESULTS_UPSERT",
-      metaJson: JSON.stringify({
-        classId,
-        subjectId,
-        termId: termRows[0].id,
-        sessionId: termRows[0].sessionId,
-        requestedEntries: entries.length,
-        inserted,
-        updated,
-      }),
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    invalidateServerCacheByPrefix(`parents:class-ranking:${user.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:dashboard:${user.schoolId}:`);
-    invalidateServerCacheByPrefix(`reports:list:${user.schoolId}:`);
-
-    return NextResponse.json({
-      message: "Scores uploaded successfully",
-      summary: { inserted, updated, totalProcessed: inserted + updated },
-    });
-  } catch (error: unknown) {
-    console.error("Scores upload error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to upload scores" },
-      { status: 500 }
+    const allowed = (profile.subjectsAndClasses || []).some(
+      (s: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) =>
+        s.subjectId.toString() === subjectId && s.classIds.map((id: mongoose.Types.ObjectId) => id.toString()).includes(classId)
     );
+    if (!allowed) return NextResponse.json({ error: "You are not assigned to this subject/class combination" }, { status: 403 });
+
+    const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
+    if (!activeTerm) return NextResponse.json({ error: "No active term found" }, { status: 400 });
+    if (!activeTerm.isPaid) return NextResponse.json({ error: "Term subscription not paid" }, { status: 400 });
+    if (activeTerm.isClosed) return NextResponse.json({ error: "Term is closed, scores cannot be modified" }, { status: 400 });
+
+    const validFields = ["classwork", "homework", "test", "exam", "extracurricular"];
+    const field = validFields.includes(scoreType) ? scoreType : "exam";
+
+    const existing = await Score.findOne({
+      schoolId, studentId: new mongoose.Types.ObjectId(studentId),
+      subjectId: new mongoose.Types.ObjectId(subjectId),
+      classId: new mongoose.Types.ObjectId(classId),
+      term: activeTerm.termNumber,
+      academicYearId: activeTerm.academicYearId,
+    }).lean();
+
+    const currentScores = existing || {};
+    const updatedScores = {
+      classwork: (currentScores as Record<string, number>).classwork ?? 0,
+      homework: (currentScores as Record<string, number>).homework ?? 0,
+      test: (currentScores as Record<string, number>).test ?? 0,
+      exam: (currentScores as Record<string, number>).exam ?? 0,
+      extracurricular: (currentScores as Record<string, number>).extracurricular ?? 0,
+      [field]: scoreValue,
+    };
+    const total = Object.values(updatedScores).reduce((a, b) => a + b, 0);
+
+    const updated = await Score.findOneAndUpdate(
+      {
+        schoolId, studentId: new mongoose.Types.ObjectId(studentId),
+        subjectId: new mongoose.Types.ObjectId(subjectId),
+        classId: new mongoose.Types.ObjectId(classId),
+        term: activeTerm.termNumber,
+        academicYearId: activeTerm.academicYearId,
+      },
+      { $set: { ...updatedScores, total, teacherId: new mongoose.Types.ObjectId(teacher.userId) } },
+      { upsert: true, new: true }
+    );
+
+    return NextResponse.json({ message: "Score uploaded successfully", scoreId: updated._id.toString(), total, score: total });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to upload score" }, { status: 500 });
   }
 }

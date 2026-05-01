@@ -1,112 +1,64 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { getParentWardData } from "@/app/utils/schoolRelationships";
-import { dailyMarks, subjects, terms } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import DailyMark from "@/app/models/DailyMark";
+import Student from "@/app/models/Students";
+import Subject from "@/app/models/Subject";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const parent: ITokenPayload | null = verifyToken(token || "");
+    if (!parent || parent.role !== "PARENT") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!parent || parent.role !== "PARENT") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    const { searchParams } = new URL(req.url);
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(parent.schoolId);
+    const parentId = new mongoose.Types.ObjectId(parent.userId);
+
+    const wardLinks = await ParentWardLink.find({ schoolId, parentId }).lean();
+    const wardIds = wardLinks.map((w) => w.studentId);
+    if (!wardIds.length) return NextResponse.json({ wards: [] });
+
+    const termId = searchParams.get("termId");
+    const termFilter = termId
+      ? await Term.findOne({ schoolId, _id: new mongoose.Types.ObjectId(termId) }).lean()
+      : await Term.findOne({ schoolId, isActive: true }).lean();
+
+    const students = await Student.find({ schoolId, _id: { $in: wardIds } }).lean();
+    const studentMap = new Map(students.map((s) => [s._id.toString(), s]));
+
+    const marks = termFilter
+      ? await DailyMark.aggregate([
+          { $match: { schoolId, studentId: { $in: wardIds }, termId: termFilter._id } },
+          { $group: { _id: { studentId: "$studentId", subjectId: "$subjectId" }, avg: { $avg: "$score" }, max: { $max: "$score" }, count: { $sum: 1 } } },
+        ])
+      : [];
+
+    const subjectIds = [...new Set(marks.map((m) => m._id.subjectId.toString()))];
+    const subjects = subjectIds.length ? await Subject.find({ _id: { $in: subjectIds } }).lean() : [];
+    const subjectMap = new Map(subjects.map((s) => [s._id.toString(), s.name]));
+
+    const byStudent = new Map<string, { studentId: string; fullName: string; scores: Array<{subjectId: string; subjectName: string; avg: number; max: number; count: number}> }>();
+    for (const sid of wardIds) {
+      byStudent.set(sid.toString(), { studentId: sid.toString(), fullName: studentMap.get(sid.toString())?.fullName || "Unknown", scores: [] });
+    }
+    for (const m of marks) {
+      const sid = m._id.studentId.toString();
+      byStudent.get(sid)?.scores.push({
+        subjectId: m._id.subjectId.toString(),
+        subjectName: subjectMap.get(m._id.subjectId.toString()) || "Unknown",
+        avg: Math.round(m.avg),
+        max: m.max,
+        count: m.count,
+      });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const wards = await getParentWardData(d1, parent.schoolId, parent.userId);
-    const wardIds = wards.map((ward) => ward.id).filter(Boolean);
-
-    if (!wardIds.length) {
-      return NextResponse.json({ wards, students: wards, scores: [] });
-    }
-
-    const markRows = await d1
-      .select({
-        id: dailyMarks.id,
-        studentId: dailyMarks.studentId,
-        subjectId: dailyMarks.subjectId,
-        assessmentType: dailyMarks.assessmentType,
-        score: dailyMarks.score,
-        termId: dailyMarks.termId,
-        subjectName: subjects.name,
-        termNumber: terms.termNumber,
-      })
-      .from(dailyMarks)
-      .innerJoin(subjects, eq(dailyMarks.subjectId, subjects.id))
-      .innerJoin(terms, eq(dailyMarks.termId, terms.id))
-      .where(
-        and(
-          eq(dailyMarks.schoolId, parent.schoolId),
-          eq(dailyMarks.isDeleted, false),
-          inArray(dailyMarks.studentId, wardIds)
-        )
-      );
-
-    type ScoreAgg = {
-      _id: string;
-      studentId: { _id: string };
-      subjectId: { _id: string; name: string };
-      term: number;
-      classwork: number;
-      homework: number;
-      extracurricular: number;
-      test: number;
-      exam: number;
-      total: number;
-    };
-
-    const grouped = new Map<string, ScoreAgg>();
-    for (const row of markRows) {
-      const key = `${row.studentId}:${row.subjectId}:${row.termNumber}`;
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          _id: key,
-          studentId: { _id: row.studentId },
-          subjectId: { _id: row.subjectId, name: row.subjectName },
-          term: row.termNumber,
-          classwork: 0,
-          homework: 0,
-          extracurricular: 0,
-          test: 0,
-          exam: 0,
-          total: 0,
-        });
-      }
-
-      const entry = grouped.get(key);
-      if (!entry) continue;
-
-      const bucket = String(row.assessmentType || "").toLowerCase();
-      const value = Number(row.score) || 0;
-      if (bucket === "classwork") entry.classwork += value;
-      else if (bucket === "homework") entry.homework += value;
-      else if (bucket === "extracurricular") entry.extracurricular += value;
-      else if (bucket === "test") entry.test += value;
-      else if (bucket === "exam") entry.exam += value;
-      else entry.classwork += value;
-    }
-
-    const scores = [...grouped.values()].map((entry) => ({
-      ...entry,
-      total: entry.classwork + entry.homework + entry.extracurricular + entry.test + entry.exam,
-    }));
-
-    return NextResponse.json({
-      wards,
-      students: wards,
-      scores,
-    });
+    return NextResponse.json({ wards: [...byStudent.values()], termId: termFilter?._id.toString() || null });
   } catch (error: unknown) {
-    console.error("Parent ward scores error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch ward scores" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch ward scores" }, { status: 500 });
   }
 }

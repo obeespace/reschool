@@ -1,139 +1,43 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs, dailyMarks, teacherSubjectAssignments, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
+import connectDB from "@/app/utils/db";
+import DailyMark from "@/app/models/DailyMark";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 
 export async function PATCH(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const user: ITokenPayload | null = verifyToken(token || "");
-
-    if (!user || (user.role !== "TEACHER" && user.role !== "ADMIN")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const teacher: ITokenPayload | null = verifyToken(token || "");
+    if (!teacher || teacher.role !== "TEACHER") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
     const body = await req.json();
-    const id = String(body?.id || "").trim();
-    const score = body?.score;
-    const maxScore = body?.maxScore;
-    const feedbackNotes = body?.feedbackNotes;
+    const id = String(body?.id || body?.markId || "").trim();
+    const score = Number(body?.score);
+    const notes = body?.notes !== undefined ? String(body.notes).trim() : undefined;
 
-    if (!id) {
-      return NextResponse.json({ error: "id is required" }, { status: 400 });
-    }
+    if (!id || !Number.isFinite(score)) return NextResponse.json({ error: "id and score are required" }, { status: 400 });
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
 
-    const markRows = await d1
-      .select({
-        id: dailyMarks.id,
-        classId: dailyMarks.classId,
-        subjectId: dailyMarks.subjectId,
-        studentId: dailyMarks.studentId,
-        termId: dailyMarks.termId,
-        currentScore: dailyMarks.score,
-        currentMaxScore: dailyMarks.maxScore,
-        currentFeedbackNotes: dailyMarks.feedbackNotes,
-      })
-      .from(dailyMarks)
-      .where(and(eq(dailyMarks.id, id), eq(dailyMarks.schoolId, user.schoolId), eq(dailyMarks.isDeleted, false)))
-      .limit(1);
+    const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
+    if (!activeTerm?.isPaid) return NextResponse.json({ error: "Term subscription not paid" }, { status: 400 });
+    if (activeTerm?.isClosed) return NextResponse.json({ error: "Term is closed" }, { status: 400 });
 
-    const mark = markRows[0];
-    if (!mark) {
-      return NextResponse.json({ error: "Daily mark not found" }, { status: 404 });
-    }
+    const mark = await DailyMark.findOne({ _id: new mongoose.Types.ObjectId(id), schoolId });
+    if (!mark) return NextResponse.json({ error: "Daily mark not found" }, { status: 404 });
 
-    if (user.role === "TEACHER") {
-      const assignmentRows = await d1
-        .select({ id: teacherSubjectAssignments.id })
-        .from(teacherSubjectAssignments)
-        .where(
-          and(
-            eq(teacherSubjectAssignments.schoolId, user.schoolId),
-            eq(teacherSubjectAssignments.teacherId, user.userId),
-            eq(teacherSubjectAssignments.classId, mark.classId),
-            eq(teacherSubjectAssignments.subjectId, mark.subjectId)
-          )
-        )
-        .limit(1);
+    if (!Array.isArray(mark.modificationHistory)) mark.modificationHistory = [];
+    mark.modificationHistory.push({ previousScore: mark.score, editedBy: new mongoose.Types.ObjectId(teacher.userId), editedAt: new Date() });
+    mark.score = score;
+    if (notes !== undefined) mark.notes = notes;
+    await mark.save();
 
-      if (!assignmentRows[0]) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
-
-    const termRows = await d1
-      .select({ id: terms.id, isPaid: terms.isPaid, isClosed: terms.isClosed })
-      .from(terms)
-      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.id, mark.termId)))
-      .limit(1);
-
-    if (!termRows[0]) {
-      return NextResponse.json({ error: "Associated term not found" }, { status: 400 });
-    }
-
-    if (!termRows[0].isPaid) {
-      return NextResponse.json({ error: "Associated term is not paid" }, { status: 400 });
-    }
-
-    if (termRows[0].isClosed) {
-      return NextResponse.json({ error: "Associated term is closed" }, { status: 400 });
-    }
-
-    const now = new Date();
-    await d1
-      .update(dailyMarks)
-      .set({
-        score: Number.isFinite(Number(score)) ? Number(score) : undefined,
-        maxScore: Number.isFinite(Number(maxScore)) ? Number(maxScore) : undefined,
-        feedbackNotes: typeof feedbackNotes === "string" ? feedbackNotes : undefined,
-        lastModifiedBy: user.userId,
-        updatedAt: now,
-      })
-      .where(eq(dailyMarks.id, id));
-
-    await d1.insert(auditLogs).values({
-      id: crypto.randomUUID(),
-      schoolId: user.schoolId,
-      actorId: user.userId,
-      action: "DAILY_MARK_EDITED",
-      metaJson: JSON.stringify({
-        markId: id,
-        studentId: mark.studentId,
-        classId: mark.classId,
-        subjectId: mark.subjectId,
-        termId: mark.termId,
-        before: {
-          score: mark.currentScore,
-          maxScore: mark.currentMaxScore,
-          feedbackNotes: mark.currentFeedbackNotes,
-        },
-        after: {
-          score: Number.isFinite(Number(score)) ? Number(score) : mark.currentScore,
-          maxScore: Number.isFinite(Number(maxScore)) ? Number(maxScore) : mark.currentMaxScore,
-          feedbackNotes: typeof feedbackNotes === "string" ? feedbackNotes : mark.currentFeedbackNotes,
-        },
-      }),
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    invalidateServerCacheByPrefix(`parents:class-ranking:${user.schoolId}:`);
-    invalidateServerCacheByPrefix(`parents:dashboard:${user.schoolId}:`);
-    invalidateServerCacheByPrefix(`reports:list:${user.schoolId}:`);
-
-    return NextResponse.json({ message: "Daily mark updated" });
+    return NextResponse.json({ message: "Daily mark updated", id });
   } catch (error: unknown) {
-    console.error("Edit daily mark error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to edit daily mark" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to edit daily mark" }, { status: 500 });
   }
 }
+
+export async function PUT(req: Request) { return PATCH(req); }

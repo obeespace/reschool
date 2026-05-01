@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { schools, sessions, terms as d1Terms } from "@/app/db/schema";
-import { eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
@@ -14,11 +15,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const { name, startDate, endDate, setAsActive } = await req.json();
     if (!name || !startDate || !endDate) {
       return NextResponse.json(
@@ -27,30 +23,23 @@ export async function POST(req: Request) {
       );
     }
 
-    const now = new Date();
-    const sessionId = crypto.randomUUID();
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
     const start = new Date(startDate);
     const end = new Date(endDate);
 
-    await d1
-      .insert(schools)
-      .values({ id: admin.schoolId, name: "School", createdAt: now, updatedAt: now })
-      .onConflictDoNothing();
-
     if (setAsActive) {
-      await d1.update(sessions).set({ isCurrent: false, updatedAt: now }).where(eq(sessions.schoolId, admin.schoolId));
-      await d1.update(d1Terms).set({ isCurrent: false, updatedAt: now }).where(eq(d1Terms.schoolId, admin.schoolId));
+      await AcademicYear.updateMany({ schoolId }, { isActive: false });
+      await Term.updateMany({ schoolId }, { isActive: false });
     }
 
-    await d1.insert(sessions).values({
-      id: sessionId,
-      schoolId: admin.schoolId,
-      year: name,
+    const academicYear = await AcademicYear.create({
+      schoolId,
+      name,
       startDate: start,
       endDate: end,
-      isCurrent: !!setAsActive,
-      createdAt: now,
-      updatedAt: now,
+      isActive: !!setAsActive,
+      term: 1,
     });
 
     const totalDays = Math.max(3, Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
@@ -58,7 +47,6 @@ export async function POST(req: Request) {
     const createdTerms: Array<{ termId: string; termNumber: number; startDate: Date; endDate: Date }> = [];
 
     for (let termNumber = 1; termNumber <= 3; termNumber++) {
-      const termId = crypto.randomUUID();
       const termStart = new Date(start);
       termStart.setDate(start.getDate() + (termNumber - 1) * termDurationDays);
 
@@ -69,24 +57,23 @@ export async function POST(req: Request) {
         termEnd.setDate(start.getDate() + termNumber * termDurationDays - 1);
       }
 
-      await d1.insert(d1Terms).values({
-        id: termId,
-        schoolId: admin.schoolId,
-        sessionId,
+      const term = await Term.create({
+        schoolId,
+        academicYearId: academicYear._id,
         termNumber,
-        name: `Term ${termNumber}`,
         startDate: termStart,
         endDate: termEnd,
-        isCurrent: !!setAsActive && termNumber === 1,
+        isActive: !!setAsActive && termNumber === 1,
         isPaid: false,
         isClosed: false,
-        paymentDate: null,
-        paymentReference: null,
-        createdAt: now,
-        updatedAt: now,
       });
 
-      createdTerms.push({ termId, termNumber, startDate: termStart, endDate: termEnd });
+      createdTerms.push({
+        termId: (term._id as mongoose.Types.ObjectId).toString(),
+        termNumber,
+        startDate: termStart,
+        endDate: termEnd,
+      });
     }
 
     invalidateServerCacheByPrefix(`academic-years:list:${admin.schoolId}`);
@@ -94,7 +81,7 @@ export async function POST(req: Request) {
     invalidateServerCacheByPrefix(`admin:stats:${admin.schoolId}`);
 
     return NextResponse.json({
-      academicYearId: sessionId,
+      academicYearId: (academicYear._id as mongoose.Types.ObjectId).toString(),
       terms: createdTerms,
       message: "Academic year and 3 terms created successfully",
     });

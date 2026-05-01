@@ -1,133 +1,58 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { classes, enrollments, terms } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
-
-function splitLevelAndArm(className: string, fallbackLevel: string) {
-  const normalized = String(className || "").trim();
-  const parts = normalized.split(/\s+/).filter(Boolean);
-
-  if (parts.length >= 2) {
-    const arm = parts[parts.length - 1].toUpperCase();
-    const level = parts.slice(0, -1).join(" ") || fallbackLevel;
-    return { level, arm };
-  }
-
-  return { level: fallbackLevel || normalized, arm: "A" };
-}
+import connectDB from "@/app/utils/db";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import Class from "@/app/models/Class";
+import Student from "@/app/models/Students";
+import Term from "@/app/models/Term";
+import AcademicYear from "@/app/models/AcademicYear";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const teacher: ITokenPayload | null = verifyToken(token || "");
+    if (!teacher || teacher.role !== "TEACHER") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!teacher || teacher.role !== "TEACHER") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
+    const userId = new mongoose.Types.ObjectId(teacher.userId);
+
+    const profile = await TeacherProfile.findOne({ schoolId, userId }).lean();
+    if (!profile) return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
+
+    const allClassIds = new Set<string>();
+    if (profile.classTeacherOf) allClassIds.add(profile.classTeacherOf.toString());
+    for (const entry of profile.subjectsAndClasses || []) {
+      for (const cid of entry.classIds || []) allClassIds.add(cid.toString());
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const classIds = [...allClassIds].map((id) => new mongoose.Types.ObjectId(id));
+    const classes = classIds.length ? await Class.find({ _id: { $in: classIds } }).lean() : [];
+    const classMap = new Map(classes.map((c) => [c._id.toString(), c]));
 
-    const profile = await getTeacherProfileData(d1, teacher.schoolId, teacher.userId);
-    if (!profile) {
-      return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
-    }
-
-    const taughtClassIds = new Set<string>();
-    if (profile.classTeacherOf?._id) {
-      taughtClassIds.add(profile.classTeacherOf._id);
-    }
-    for (const item of profile.subjectsAndClasses) {
-      for (const cls of item.classIds) {
-        if (cls?._id) {
-          taughtClassIds.add(cls._id);
-        }
-      }
-    }
-
-    const classIds = [...taughtClassIds];
-    const currentTermRows = await d1
-      .select({ id: terms.id })
-      .from(terms)
-      .where(and(eq(terms.schoolId, teacher.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
-
-    const currentTermId = currentTermRows[0]?.id || null;
-    const studentCountRows = currentTermId && classIds.length
-      ? await d1
-          .select({ classId: enrollments.classId, studentId: enrollments.studentId })
-          .from(enrollments)
-          .where(
-            and(
-              eq(enrollments.schoolId, teacher.schoolId),
-              eq(enrollments.termId, currentTermId),
-              inArray(enrollments.classId, classIds)
-            )
-          )
-      : [];
-
-    const studentIds = new Set<string>();
-    for (const row of studentCountRows) {
-      if (classIds.includes(row.classId)) {
-        studentIds.add(row.studentId);
-      }
-    }
-
-    const classTeacherStudentCount = profile.classTeacherOf?._id
-      ? new Set(
-          studentCountRows
-            .filter((row) => row.classId === profile.classTeacherOf?._id)
-            .map((row) => row.studentId)
-        ).size
+    const myStudents = profile.classTeacherOf
+      ? await Student.countDocuments({ schoolId, currentClassId: profile.classTeacherOf })
       : 0;
 
-    const classesPayload = classIds.length
-      ? await d1
-          .select({ id: classes.id, name: classes.name, level: classes.level })
-          .from(classes)
-          .where(and(eq(classes.schoolId, teacher.schoolId), inArray(classes.id, classIds)))
-          .then((rows) =>
-            rows.map((row) => {
-              const parsed = splitLevelAndArm(row.name, row.level);
-              return {
-                _id: row.id,
-                name: row.name,
-                level: parsed.level,
-                arm: parsed.arm,
-              };
-            })
-          )
-      : [];
+    const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
+    const activeYear = activeTerm ? await AcademicYear.findById(activeTerm.academicYearId).lean() : null;
 
     return NextResponse.json({
-      stats: {
-        myClasses: classIds.length,
-        myStudents: studentIds.size,
-        scoresUploaded: 0,
-      },
-      assignments: {
-        classTeacherOf: profile.classTeacherOf
-          ? {
-              ...profile.classTeacherOf,
-              studentCount: classTeacherStudentCount,
-            }
-          : null,
-        subjectsAndClasses: profile.subjectsAndClasses.map((entry) => ({
-          subject: entry.subjectId,
-          classes: entry.classIds,
+      profile: {
+        classTeacherOf: profile.classTeacherOf ? { _id: profile.classTeacherOf.toString(), ...(classMap.get(profile.classTeacherOf.toString()) || {}) } : null,
+        subjectsAndClasses: (profile.subjectsAndClasses || []).map((e: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) => ({
+          subjectId: { _id: e.subjectId.toString() },
+          classIds: e.classIds.map((id: mongoose.Types.ObjectId) => ({ _id: id.toString(), ...(classMap.get(id.toString()) || {}) })),
         })),
       },
-      classes: classesPayload,
+      stats: {
+        myStudents,
+        activeTerm: activeTerm && activeYear ? `${(activeYear as {name?: string}).name} T${activeTerm.termNumber}` : "N/A",
+        myClasses: allClassIds.size,
+      },
     });
   } catch (error: unknown) {
-    console.error("Teacher dashboard error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch teacher dashboard" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch teacher dashboard" }, { status: 500 });
   }
 }

@@ -1,108 +1,54 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { enrollments, parentWardLinks, students, terms, users } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
+import connectDB from "@/app/utils/db";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import Student from "@/app/models/Students";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import User from "@/app/models/User";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const teacher: ITokenPayload | null = verifyToken(token || "");
+    if (!teacher || teacher.role !== "TEACHER") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!teacher || teacher.role !== "TEACHER") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
+    const userId = new mongoose.Types.ObjectId(teacher.userId);
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const profile = await TeacherProfile.findOne({ schoolId, userId }).lean();
+    if (!profile || !profile.classTeacherOf) return NextResponse.json({ students: [] });
 
-    const profile = await getTeacherProfileData(d1, teacher.schoolId, teacher.userId);
-    if (!profile?.classTeacherOf?._id) {
-      return NextResponse.json({ classTeacherOf: null, students: [] });
-    }
+    const students = await Student.find({ schoolId, currentClassId: profile.classTeacherOf }).lean();
+    const studentIds = students.map((s) => s._id);
 
-    const currentTermRows = await d1
-      .select({ id: terms.id })
-      .from(terms)
-      .where(and(eq(terms.schoolId, teacher.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
-
-    const currentTermId = currentTermRows[0]?.id;
-    if (!currentTermId) {
-      return NextResponse.json({ classTeacherOf: profile.classTeacherOf, students: [] });
-    }
-
-    const studentRows = await d1
-      .select({
-        id: students.id,
-        firstName: students.firstName,
-        lastName: students.lastName,
-        admissionNumber: students.admissionNumber,
-        gender: students.gender,
-        dateOfBirth: students.dateOfBirth,
-      })
-      .from(enrollments)
-      .innerJoin(students, eq(enrollments.studentId, students.id))
-      .where(
-        and(
-          eq(enrollments.schoolId, teacher.schoolId),
-          eq(enrollments.classId, profile.classTeacherOf._id),
-          eq(enrollments.termId, currentTermId)
-        )
-      );
-
-    const studentIds = studentRows.map((row) => row.id);
-    const parentLinks = studentIds.length
-      ? await d1
-          .select({ studentId: parentWardLinks.studentId, parentId: parentWardLinks.parentId, isPrimary: parentWardLinks.isPrimary })
-          .from(parentWardLinks)
-          .where(and(eq(parentWardLinks.schoolId, teacher.schoolId), inArray(parentWardLinks.studentId, studentIds)))
-      : [];
-
-    const parentIds = [...new Set(parentLinks.map((row) => row.parentId))];
-    const parentRows = parentIds.length
-      ? await d1
-          .select({ id: users.id, name: users.name, email: users.email })
-          .from(users)
-          .where(inArray(users.id, parentIds))
-      : [];
-
-    const parentMap = new Map(parentRows.map((row) => [row.id, row]));
-    const preferredParentByStudent = new Map<string, { parentId: string; isPrimary: boolean }>();
-
-    for (const link of parentLinks) {
-      const existing = preferredParentByStudent.get(link.studentId);
-      if (!existing || (!existing.isPrimary && link.isPrimary)) {
-        preferredParentByStudent.set(link.studentId, { parentId: link.parentId, isPrimary: link.isPrimary });
+    const wardLinks = studentIds.length ? await ParentWardLink.find({ schoolId, studentId: { $in: studentIds } }).lean() : [];
+    const parentIds = [...new Set(wardLinks.map((w) => w.parentId))];
+    const parents = parentIds.length ? await User.find({ _id: { $in: parentIds } }).select("_id fullName email").lean() : [];
+    const parentMap = new Map(parents.map((p) => [p._id.toString(), p]));
+    const parentByStudent = new Map<string, string>();
+    for (const link of wardLinks) {
+      if (link.isPrimary || !parentByStudent.has(link.studentId.toString())) {
+        parentByStudent.set(link.studentId.toString(), link.parentId.toString());
       }
     }
 
     return NextResponse.json({
-      classTeacherOf: profile.classTeacherOf,
-      students: studentRows.map((row) => {
-        const preferredParent = preferredParentByStudent.get(row.id);
-        const parent = preferredParent ? parentMap.get(preferredParent.parentId) : null;
+      students: students.map((s) => {
+        const parentId = parentByStudent.get(s._id.toString());
+        const parent = parentId ? parentMap.get(parentId) : null;
         return {
-          _id: row.id,
-          id: row.id,
-          fullName: `${row.firstName} ${row.lastName}`.trim(),
-          admissionNumber: row.admissionNumber,
-          gender: row.gender,
-          dateOfBirth: row.dateOfBirth,
-          parent: parent
-            ? { fullName: parent.name, email: parent.email }
-            : null,
+          _id: s._id.toString(),
+          id: s._id.toString(),
+          fullName: s.fullName,
+          admissionNumber: s.admissionNumber,
+          gender: s.gender,
+          parent: parent ? { id: parent._id.toString(), fullName: parent.fullName, email: parent.email } : null,
         };
       }),
     });
   } catch (error: unknown) {
-    console.error("Fetch teacher students error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch teacher students" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch students" }, { status: 500 });
   }
 }

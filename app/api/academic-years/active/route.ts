@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { sessions, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
@@ -13,44 +14,32 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const activeSession = await d1
-      .select()
-      .from(sessions)
-      .where(and(eq(sessions.schoolId, user.schoolId), eq(sessions.isCurrent, true)))
-      .limit(1);
+    const activeYear = await AcademicYear.findOne({ schoolId, isActive: true }).lean();
 
-    if (!activeSession.length) {
+    if (!activeYear) {
       return NextResponse.json({
         academicYear: null,
         message: "No active academic year found",
       });
     }
 
-    const activeTerm = await d1
-      .select({ termNumber: terms.termNumber })
-      .from(terms)
-      .where(
-        and(
-          eq(terms.schoolId, user.schoolId),
-          eq(terms.sessionId, activeSession[0].id),
-          eq(terms.isCurrent, true)
-        )
-      )
-      .limit(1);
+    const activeTerm = await Term.findOne({
+      schoolId,
+      academicYearId: activeYear._id,
+      isActive: true,
+    }).select("termNumber").lean();
 
     return NextResponse.json({
       academicYear: {
-        _id: activeSession[0].id,
-        name: activeSession[0].year,
-        startDate: activeSession[0].startDate,
-        endDate: activeSession[0].endDate,
-        isActive: activeSession[0].isCurrent,
-        term: activeTerm[0]?.termNumber ?? 1,
+        _id: (activeYear._id as mongoose.Types.ObjectId).toString(),
+        name: activeYear.name,
+        startDate: activeYear.startDate,
+        endDate: activeYear.endDate,
+        isActive: activeYear.isActive,
+        term: activeTerm?.termNumber ?? 1,
       },
     });
   } catch (error: unknown) {

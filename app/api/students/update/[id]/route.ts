@@ -1,22 +1,10 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { students } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import mongoose from "mongoose";
 
-function splitFullName(fullName: string): { firstName: string; lastName: string } {
-  const name = String(fullName || "").trim();
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) {
-    return { firstName: parts[0] || "Student", lastName: "" };
-  }
-  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
-}
-
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
@@ -30,11 +18,6 @@ export async function PUT(
       return NextResponse.json({ error: "Student id is required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const body = await req.json();
     const fullName = String(body?.fullName || "").trim();
     const admissionNumber = String(body?.admissionNumber || "").trim();
@@ -42,36 +25,16 @@ export async function PUT(
     const dateOfBirth = body?.dateOfBirth ? new Date(body.dateOfBirth) : null;
 
     if (!fullName || !admissionNumber) {
-      return NextResponse.json(
-        { error: "Full name and admission number are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Full name and admission number are required" }, { status: 400 });
     }
 
-    const names = splitFullName(fullName);
-    const now = new Date();
-
-    await d1
-      .update(students)
-      .set({
-        firstName: names.firstName,
-        lastName: names.lastName,
-        admissionNumber,
-        gender,
-        dateOfBirth,
-        updatedAt: now,
-      })
-      .where(and(eq(students.id, id), eq(students.schoolId, user.schoolId)));
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    await Student.findOneAndUpdate({ _id: id, schoolId }, { fullName, admissionNumber, gender, dateOfBirth });
 
     return NextResponse.json({
       message: "Student updated successfully",
-      student: {
-        id,
-        fullName,
-        admissionNumber,
-        gender,
-        dateOfBirth,
-      },
+      student: { id, fullName, admissionNumber, gender, dateOfBirth },
     });
   } catch (error: unknown) {
     console.error("Update student error:", error);

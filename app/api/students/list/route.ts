@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { enrollments, sections, students, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import ClassModel from "@/app/models/Class";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
@@ -13,47 +14,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    const rows = await Student.find({ schoolId }).lean();
 
-    const rows = await d1
-      .select()
-      .from(students)
-      .where(eq(students.schoolId, user.schoolId));
-
-    const currentTermRows = await d1
-      .select({ id: terms.id })
-      .from(terms)
-      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
-
-    const enrollmentMap = new Map<string, string>();
-    const currentTermId = currentTermRows[0]?.id;
-    if (currentTermId) {
-      const enrollmentRows = await d1
-        .select({ studentId: enrollments.studentId, sectionName: sections.name })
-        .from(enrollments)
-        .leftJoin(sections, eq(enrollments.sectionId, sections.id))
-        .where(and(eq(enrollments.schoolId, user.schoolId), eq(enrollments.termId, currentTermId)));
-
-      for (const row of enrollmentRows) {
-        if (row.sectionName) {
-          enrollmentMap.set(row.studentId, row.sectionName);
-        }
-      }
-    }
+    const classIds = [...new Set(rows.map((s) => s.currentClassId?.toString()).filter(Boolean))];
+    const classes = classIds.length
+      ? await ClassModel.find({ _id: { $in: classIds } }).select("level arm").lean()
+      : [];
+    const classMap = new Map(classes.map((c) => [(c._id as mongoose.Types.ObjectId).toString(), `${c.level} ${c.arm}`]));
 
     return NextResponse.json({
       students: rows.map((row) => ({
-        _id: row.id,
-        id: row.id,
-        fullName: `${row.firstName} ${row.lastName}`.trim(),
+        _id: (row._id as mongoose.Types.ObjectId).toString(),
+        id: (row._id as mongoose.Types.ObjectId).toString(),
+        fullName: row.fullName,
         admissionNumber: row.admissionNumber,
         dateOfBirth: row.dateOfBirth,
         gender: row.gender,
-        currentClass: enrollmentMap.get(row.id) || null,
+        currentClass: row.currentClassId ? classMap.get((row.currentClassId as mongoose.Types.ObjectId).toString()) || null : null,
       })),
     });
   } catch (error: unknown) {

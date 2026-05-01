@@ -1,39 +1,43 @@
 import bcrypt from "bcryptjs";
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { classes, teacherClassAssignments, teacherSubjectAssignments, users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import Class from "@/app/models/Class";
+import mongoose from "mongoose";
+
+async function buildProfile(schoolId: mongoose.Types.ObjectId, userId: mongoose.Types.ObjectId) {
+  const profile = await TeacherProfile.findOne({ schoolId, userId }).lean();
+  if (!profile) return { classTeacherOf: null, subjectsAndClasses: [] };
+  const classTeacherOfId = profile.classTeacherOf ? profile.classTeacherOf.toString() : null;
+  let classTeacherOf = null;
+  if (classTeacherOfId) {
+    const cls = await Class.findById(classTeacherOfId).lean() as {_id: mongoose.Types.ObjectId; level: string; arm: string} | null;
+    if (cls) classTeacherOf = { _id: cls._id.toString(), name: `${cls.level} ${cls.arm}`.trim() };
+  }
+  const subjectsAndClasses = await Promise.all(
+    (profile.subjectsAndClasses || []).map(async (entry: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) => ({
+      subjectId: { _id: entry.subjectId.toString() },
+      classIds: entry.classIds.map((id: mongoose.Types.ObjectId) => ({ _id: id.toString() })),
+    }))
+  );
+  return { classTeacherOf, subjectsAndClasses };
+}
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const teacher: ITokenPayload | null = verifyToken(token || "");
+    if (!teacher || teacher.role !== "TEACHER") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!teacher || teacher.role !== "TEACHER") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const profile = await getTeacherProfileData(d1, teacher.schoolId, teacher.userId);
-    if (!profile) {
-      return NextResponse.json({ error: "Teacher profile not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({
-      profile,
-    });
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
+    const userId = new mongoose.Types.ObjectId(teacher.userId);
+    const profile = await buildProfile(schoolId, userId);
+    return NextResponse.json({ profile });
   } catch (error: unknown) {
-    console.error("Fetch teacher profile error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch teacher profile" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch teacher profile" }, { status: 500 });
   }
 }
 
@@ -41,15 +45,7 @@ export async function POST(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const admin: ITokenPayload | null = verifyToken(token || "");
-
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    if (!admin || admin.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
     const body = await req.json();
     const fullName = String(body?.fullName || "").trim();
@@ -59,110 +55,59 @@ export async function POST(req: Request) {
     const subjectsAndClasses = Array.isArray(body?.subjectsAndClasses) ? body.subjectsAndClasses : [];
 
     if (!fullName || !email || password.length < 6) {
-      return NextResponse.json(
-        { error: "Full name, valid email, and password (min 6 chars) are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Full name, valid email, and password (min 6 chars) are required" }, { status: 400 });
     }
 
-    const existing = await d1
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.schoolId, admin.schoolId), eq(users.email, email)))
-      .limit(1);
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
 
-    if (existing.length > 0) {
-      return NextResponse.json(
-        { error: "A user with this email already exists" },
-        { status: 409 }
-      );
-    }
+    const existing = await User.findOne({ schoolId, email }).lean();
+    if (existing) return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
 
-    const now = new Date();
-    const teacherId = crypto.randomUUID();
     const passwordHash = await bcrypt.hash(password, 10);
+    const teacher = await User.create({ schoolId, fullName, email, passwordHash, role: "TEACHER" });
+    const teacherId = teacher._id;
 
-    await d1.transaction(async (tx) => {
-      await tx.insert(users).values({
-        id: teacherId,
-        schoolId: admin.schoolId,
-        name: fullName,
-        email,
-        passwordHash,
-        role: "TEACHER",
-        createdAt: now,
-        updatedAt: now,
+    // Build TeacherProfile
+    const profileData: { schoolId: mongoose.Types.ObjectId; userId: mongoose.Types.ObjectId; classTeacherOf?: mongoose.Types.ObjectId; subjectsAndClasses: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}[] } = {
+      schoolId,
+      userId: teacherId,
+      subjectsAndClasses: [],
+    };
+
+    if (classTeacherOf) {
+      const classExists = await Class.findOne({ schoolId, _id: new mongoose.Types.ObjectId(classTeacherOf) }).lean();
+      if (classExists) {
+        // Clear old class teacher assignment
+        await TeacherProfile.updateMany({ schoolId, classTeacherOf: new mongoose.Types.ObjectId(classTeacherOf) }, { $unset: { classTeacherOf: "" } });
+        profileData.classTeacherOf = new mongoose.Types.ObjectId(classTeacherOf);
+      }
+    }
+
+    for (const assignment of subjectsAndClasses) {
+      const subjectId = String(assignment?.subjectId || "").trim();
+      const classIds = Array.isArray(assignment?.classIds) ? assignment.classIds : [];
+      if (!subjectId) continue;
+      profileData.subjectsAndClasses.push({
+        subjectId: new mongoose.Types.ObjectId(subjectId),
+        classIds: classIds.map((id: string) => new mongoose.Types.ObjectId(id)).filter(Boolean),
       });
+    }
 
-      if (classTeacherOf) {
-        const classExists = await tx
-          .select({ id: classes.id })
-          .from(classes)
-          .where(and(eq(classes.schoolId, admin.schoolId), eq(classes.id, classTeacherOf)))
-          .limit(1);
-
-        if (classExists[0]) {
-          await tx
-            .delete(teacherClassAssignments)
-            .where(and(eq(teacherClassAssignments.schoolId, admin.schoolId), eq(teacherClassAssignments.classId, classTeacherOf)));
-
-          await tx.insert(teacherClassAssignments).values({
-            id: crypto.randomUUID(),
-            schoolId: admin.schoolId,
-            teacherId,
-            classId: classTeacherOf,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-      }
-
-      for (const assignment of subjectsAndClasses) {
-        const subjectId = String(assignment?.subjectId || "").trim();
-        const classIds = Array.isArray(assignment?.classIds) ? assignment.classIds : [];
-        if (!subjectId) continue;
-
-        for (const rawClassId of classIds) {
-          const classId = String(rawClassId || "").trim();
-          if (!classId) continue;
-          await tx.insert(teacherSubjectAssignments).values({
-            id: crypto.randomUUID(),
-            schoolId: admin.schoolId,
-            teacherId,
-            subjectId,
-            classId,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-      }
-    });
-
-    const profile = await getTeacherProfileData(d1, admin.schoolId, teacherId);
+    await TeacherProfile.create(profileData);
+    const profile = await buildProfile(schoolId, teacherId);
 
     return NextResponse.json({
       message: "Teacher created successfully",
       teacher: {
-        _id: teacherId,
-        id: teacherId,
+        _id: teacherId.toString(),
+        id: teacherId.toString(),
         fullName,
         email,
-        profile: profile
-          ? {
-              classTeacherOf: profile.classTeacherOf,
-              subjectsAndClasses: profile.subjectsAndClasses,
-            }
-          : {
-              classTeacherOf: null,
-              subjectsAndClasses: [],
-            },
+        profile: { classTeacherOf: profile.classTeacherOf, subjectsAndClasses: profile.subjectsAndClasses },
       },
     });
   } catch (error: unknown) {
-    console.error("Create teacher error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create teacher" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to create teacher" }, { status: 500 });
   }
 }

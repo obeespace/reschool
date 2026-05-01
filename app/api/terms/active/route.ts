@@ -1,8 +1,9 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { sessions, terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
+import AcademicYear from "@/app/models/AcademicYear";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
@@ -13,52 +14,32 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
+
+    if (!activeTerm) {
+      return NextResponse.json({ error: "No active term found" }, { status: 404 });
     }
 
-    const activeTerm = await d1
-      .select()
-      .from(terms)
-      .where(and(eq(terms.schoolId, user.schoolId), eq(terms.isCurrent, true)))
-      .limit(1);
-
-    if (!activeTerm.length) {
-      return NextResponse.json(
-        { error: "No active term found" },
-        { status: 404 }
-      );
-    }
-
-    const session = await d1
-      .select({ id: sessions.id, name: sessions.year })
-      .from(sessions)
-      .where(eq(sessions.id, activeTerm[0].sessionId))
-      .limit(1);
+    const academicYear = await AcademicYear.findById(activeTerm.academicYearId).select("name").lean();
 
     return NextResponse.json({
       term: {
-        ...activeTerm[0],
-        academicYearId: session[0]
-          ? {
-              _id: session[0].id,
-              name: session[0].name,
-            }
+        ...activeTerm,
+        _id: (activeTerm._id as mongoose.Types.ObjectId).toString(),
+        academicYearId: academicYear
+          ? { _id: (academicYear._id as mongoose.Types.ObjectId).toString(), name: academicYear.name }
           : null,
-        termNumber: activeTerm[0].termNumber,
-        isActive: activeTerm[0].isCurrent,
+        isActive: activeTerm.isActive,
       },
-      isPaid: activeTerm[0].isPaid,
-      isClosed: activeTerm[0].isClosed,
+      isPaid: activeTerm.isPaid,
+      isClosed: activeTerm.isClosed,
     });
   } catch (error: unknown) {
     console.error("Fetch active term error:", error);
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to fetch active term",
-      },
+      { error: error instanceof Error ? error.message : "Failed to fetch active term" },
       { status: 500 }
     );
   }

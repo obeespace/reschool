@@ -1,92 +1,63 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { dailyMarks, terms } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getParentWardData } from "@/app/utils/schoolRelationships";
-import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
+import connectDB from "@/app/utils/db";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import ReportCard from "@/app/models/ReportCard";
+import Student from "@/app/models/Students";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const parent: ITokenPayload | null = verifyToken(token || "");
-
-    if (!parent || parent.role !== "PARENT") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    if (!parent || parent.role !== "PARENT") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const termNumberFilter = Number(searchParams.get("term") || 0);
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(parent.schoolId);
+    const parentId = new mongoose.Types.ObjectId(parent.userId);
 
-    const payload = await getOrSetServerCache({
-      key: `parents:class-ranking:${parent.schoolId}:${parent.userId}:${termNumberFilter || "all"}`,
-      ttlMs: 45_000,
-      bypass: shouldBypassServerCache(req),
-      factory: async () => {
-        const wards = await getParentWardData(d1, parent.schoolId, parent.userId);
-        const wardIds = wards.map((ward) => ward.id).filter(Boolean);
-        if (!wardIds.length) {
-          return { rankings: [] as Array<{ studentId: string; term: number; classId: string; averageScore: number; rank: number }> };
-        }
+    const wardLinks = await ParentWardLink.find({ schoolId, parentId }).lean();
+    const wardIds = wardLinks.map((w) => w.studentId);
+    if (!wardIds.length) return NextResponse.json({ rankings: [] });
 
-        const markRows = await d1
-          .select({
-            studentId: dailyMarks.studentId,
-            classId: dailyMarks.classId,
-            score: dailyMarks.score,
-            termNumber: terms.termNumber,
-          })
-          .from(dailyMarks)
-          .innerJoin(terms, eq(dailyMarks.termId, terms.id))
-          .where(
-            and(
-              eq(dailyMarks.schoolId, parent.schoolId),
-              eq(dailyMarks.isDeleted, false),
-              inArray(dailyMarks.studentId, wardIds)
-            )
-          );
+    const termId = searchParams.get("termId");
+    const term = termId
+      ? await Term.findOne({ schoolId, _id: new mongoose.Types.ObjectId(termId) }).lean()
+      : await Term.findOne({ schoolId, isActive: true }).lean();
+    if (!term) return NextResponse.json({ rankings: [] });
 
-        const totalsByStudent = new Map<string, { total: number; count: number; classId: string; term: number }>();
-        for (const row of markRows) {
-          if (termNumberFilter > 0 && row.termNumber !== termNumberFilter) continue;
-          const current = totalsByStudent.get(row.studentId) || {
-            total: 0,
-            count: 0,
-            classId: row.classId,
-            term: row.termNumber,
-          };
-          current.total += Number(row.score) || 0;
-          current.count += 1;
-          current.classId = row.classId;
-          current.term = row.termNumber;
-          totalsByStudent.set(row.studentId, current);
-        }
+    const wardStudents = await Student.find({ schoolId, _id: { $in: wardIds } }).lean();
+    const classIds = [...new Set(wardStudents.map((s) => s.currentClassId?.toString()).filter(Boolean))];
 
-        const rankings = [...totalsByStudent.entries()]
-          .map(([studentId, stats]) => ({
-            studentId,
-            term: stats.term,
-            classId: stats.classId,
-            averageScore: stats.count ? Number((stats.total / stats.count).toFixed(2)) : 0,
-          }))
-          .sort((a, b) => b.averageScore - a.averageScore)
-          .map((entry, index) => ({ ...entry, rank: index + 1 }));
+    const rankings = [];
+    for (const classId of classIds) {
+      const reports = await ReportCard.find({ schoolId, classId: new mongoose.Types.ObjectId(classId!), termId: term._id }).lean();
+      if (!reports.length) continue;
 
-        return { rankings };
-      },
-    });
+      const sorted = [...reports].sort((a, b) => (b.average ?? 0) - (a.average ?? 0));
+      const studentIds = sorted.map((r) => r.studentId);
+      const students = await Student.find({ _id: { $in: studentIds } }).select("_id fullName").lean();
+      const studentNameMap = new Map(students.map((s) => [s._id.toString(), s.fullName]));
 
-    return NextResponse.json(payload);
+      const myWardIds = new Set(wardIds.map((id) => id.toString()));
+
+      rankings.push({
+        classId,
+        classTotal: sorted.length,
+        ranking: sorted.map((r, index) => ({
+          position: r.position ?? (index + 1),
+          studentId: r.studentId.toString(),
+          studentName: studentNameMap.get(r.studentId.toString()) || "Unknown",
+          average: r.average ?? 0,
+          isMyWard: myWardIds.has(r.studentId.toString()),
+        })),
+      });
+    }
+
+    return NextResponse.json({ rankings });
   } catch (error: unknown) {
-    console.error("Parent class ranking error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch class ranking" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch class ranking" }, { status: 500 });
   }
 }

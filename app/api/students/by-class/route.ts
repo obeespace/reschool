@@ -1,8 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { enrollments, students } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
@@ -18,33 +18,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "classId is required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
-    const rows = await d1
-      .select({
-        id: students.id,
-        firstName: students.firstName,
-        lastName: students.lastName,
-        admissionNumber: students.admissionNumber,
-        gender: students.gender,
-      })
-      .from(enrollments)
-      .innerJoin(students, eq(enrollments.studentId, students.id))
-      .where(
-        and(
-          eq(enrollments.schoolId, user.schoolId),
-          eq(enrollments.classId, classId)
-        )
-      );
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
+    const rows = await Student.find({
+      schoolId,
+      currentClassId: new mongoose.Types.ObjectId(classId),
+    }).lean();
 
     return NextResponse.json({
       students: rows.map((row) => ({
-        _id: row.id,
-        id: row.id,
-        fullName: `${row.firstName} ${row.lastName}`.trim(),
+        _id: (row._id as mongoose.Types.ObjectId).toString(),
+        id: (row._id as mongoose.Types.ObjectId).toString(),
+        fullName: row.fullName,
         admissionNumber: row.admissionNumber,
         gender: row.gender,
       })),

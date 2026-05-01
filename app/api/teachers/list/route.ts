@@ -1,60 +1,44 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
-import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const teacherUsers = await User.find({ schoolId, role: "TEACHER" }).select("_id fullName email").lean();
+    const profiles = await TeacherProfile.find({ schoolId }).lean();
+    const profileMap = new Map(profiles.map((p) => [p.userId.toString(), p]));
 
-    const rows = await d1
-      .select({
-        id: users.id,
-        fullName: users.name,
-        email: users.email,
-      })
-      .from(users)
-      .where(and(eq(users.schoolId, user.schoolId), eq(users.role, "TEACHER")));
-
-    const teachers = await Promise.all(
-      rows.map(async (row) => {
-        const profile = await getTeacherProfileData(d1, user.schoolId, row.id);
-        return {
-          _id: row.id,
-          id: row.id,
-          fullName: row.fullName,
-          email: row.email,
-          profile: profile
-            ? {
-                classTeacherOf: profile.classTeacherOf,
-                subjectsAndClasses: profile.subjectsAndClasses,
-              }
-            : {
-                classTeacherOf: null,
-                subjectsAndClasses: [],
-              },
-        };
-      })
-    );
+    const teachers = teacherUsers.map((t) => {
+      const profile = profileMap.get(t._id.toString());
+      return {
+        _id: t._id.toString(),
+        id: t._id.toString(),
+        fullName: t.fullName,
+        email: t.email,
+        profile: profile
+          ? {
+              classTeacherOf: profile.classTeacherOf ? { _id: profile.classTeacherOf.toString() } : null,
+              subjectsAndClasses: (profile.subjectsAndClasses || []).map((e: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) => ({
+                subjectId: { _id: e.subjectId.toString() },
+                classIds: e.classIds.map((id: mongoose.Types.ObjectId) => ({ _id: id.toString() })),
+              })),
+            }
+          : { classTeacherOf: null, subjectsAndClasses: [] },
+      };
+    });
 
     return NextResponse.json({ teachers });
   } catch (error: unknown) {
-    console.error("Fetch teachers error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch teachers" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch teachers" }, { status: 500 });
   }
 }

@@ -1,8 +1,8 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { terms } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Term from "@/app/models/Term";
+import mongoose from "mongoose";
 import { invalidateServerCacheByPrefix } from "@/app/utils/serverCache";
 
 export async function POST(req: Request) {
@@ -14,24 +14,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
-
     const { termId, paymentReference } = await req.json();
     if (!termId) {
       return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
     }
 
+    await connectDB();
     const now = new Date();
-    const updated = await d1
-      .update(terms)
-      .set({ isPaid: true, paymentDate: now, paymentReference: paymentReference || null, updatedAt: now })
-      .where(and(eq(terms.id, termId), eq(terms.schoolId, admin.schoolId)))
-      .returning({ id: terms.id, termNumber: terms.termNumber, isPaid: terms.isPaid, paymentDate: terms.paymentDate });
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
+    const updated = await Term.findOneAndUpdate(
+      { _id: termId, schoolId },
+      { isPaid: true, paymentDate: now, paymentReference: paymentReference || null },
+      { new: true }
+    );
 
-    if (!updated.length) {
+    if (!updated) {
       return NextResponse.json({ error: "Term not found" }, { status: 404 });
     }
 
@@ -44,10 +41,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       message: "Term marked as paid successfully",
       term: {
-        termId: updated[0].id,
-        termNumber: updated[0].termNumber,
-        isPaid: updated[0].isPaid,
-        paymentDate: updated[0].paymentDate,
+        termId: (updated._id as mongoose.Types.ObjectId).toString(),
+        termNumber: updated.termNumber,
+        isPaid: updated.isPaid,
+        paymentDate: updated.paymentDate,
       },
     });
   } catch (error: unknown) {

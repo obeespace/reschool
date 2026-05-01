@@ -1,101 +1,51 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import {
-  classes,
-  schools,
-  sessions,
-  students,
-  subjects,
-  terms,
-  users,
-} from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
-import { getOrSetServerCache, shouldBypassServerCache } from "@/app/utils/serverCache";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import Student from "@/app/models/Students";
+import Class from "@/app/models/Class";
+import Subject from "@/app/models/Subject";
+import Term from "@/app/models/Term";
+import AcademicYear from "@/app/models/AcademicYear";
+import School from "@/app/models/School";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
+    if (!user || user.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const schoolId = user.schoolId;
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const [school, activeTerm, teachers, parents, students, classes, subjects] = await Promise.all([
+      School.findById(schoolId).lean(),
+      Term.findOne({ schoolId, isActive: true }).lean(),
+      User.countDocuments({ schoolId, role: "TEACHER" }),
+      User.countDocuments({ schoolId, role: "PARENT" }),
+      Student.countDocuments({ schoolId }),
+      Class.countDocuments({ schoolId }),
+      Subject.countDocuments({ schoolId }),
+    ]);
 
-    const bypassCache = shouldBypassServerCache(req);
-    const payload = await getOrSetServerCache({
-      key: `admin:stats:${schoolId}`,
-      ttlMs: 20_000,
-      bypass: bypassCache,
-      factory: async () => {
-        const [
-          schoolRow,
-          activeTermRow,
-          teacherRows,
-          parentRows,
-          studentRows,
-          classRows,
-          subjectRows,
-        ] = await Promise.all([
-          d1.select({ name: schools.name }).from(schools).where(eq(schools.id, schoolId)).limit(1),
-          d1.select().from(terms).where(and(eq(terms.schoolId, schoolId), eq(terms.isCurrent, true))).limit(1),
-          d1.select({ id: users.id }).from(users).where(and(eq(users.schoolId, schoolId), eq(users.role, "TEACHER"))),
-          d1.select({ id: users.id }).from(users).where(and(eq(users.schoolId, schoolId), eq(users.role, "PARENT"))),
-          d1.select({ id: students.id }).from(students).where(eq(students.schoolId, schoolId)),
-          d1.select({ id: classes.id }).from(classes).where(eq(classes.schoolId, schoolId)),
-          d1.select({ id: subjects.id }).from(subjects).where(eq(subjects.schoolId, schoolId)),
-        ]);
+    const activeYear = activeTerm ? await AcademicYear.findById(activeTerm.academicYearId).lean() : null;
 
-        const activeSession = activeTermRow.length
-          ? await d1
-              .select({ year: sessions.year })
-              .from(sessions)
-              .where(eq(sessions.id, activeTermRow[0].sessionId))
-              .limit(1)
-          : [];
-
-        return {
-          schoolName: schoolRow[0]?.name || "School",
-          stats: {
-            teachers: teacherRows.length,
-            students: studentRows.length,
-            parents: parentRows.length,
-            classes: classRows.length,
-            subjects: subjectRows.length,
-          },
-          activeTerm: activeTermRow.length
-            ? {
-                academicYear: activeSession[0]?.year || "N/A",
-                term: activeTermRow[0].termNumber,
-                isPaid: activeTermRow[0].isPaid,
-                isClosed: activeTermRow[0].isClosed,
-                startDate: activeTermRow[0].startDate,
-                endDate: activeTermRow[0].endDate,
-              }
-            : null,
-        };
-      },
-    });
-
-    return NextResponse.json(payload, {
-      headers: {
-        "Cache-Control": "private, max-age=10, stale-while-revalidate=30",
-      },
+    return NextResponse.json({
+      schoolName: (school as {name?: string} | null)?.name || "School",
+      stats: { teachers, students, parents, classes, subjects },
+      activeTerm: activeTerm
+        ? {
+            academicYear: activeYear ? (activeYear as {name?: string}).name : "N/A",
+            term: activeTerm.termNumber,
+            isPaid: activeTerm.isPaid,
+            isClosed: activeTerm.isClosed,
+            startDate: activeTerm.startDate,
+            endDate: activeTerm.endDate,
+          }
+        : null,
     });
   } catch (error: unknown) {
-    console.error("Error fetching admin stats:", error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to fetch stats",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch stats" }, { status: 500 });
   }
 }

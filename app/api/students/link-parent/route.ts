@@ -1,8 +1,10 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { parentWardLinks, students, users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import Student from "@/app/models/Students";
+import User from "@/app/models/User";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import mongoose from "mongoose";
 
 export async function POST(req: Request) {
   try {
@@ -23,59 +25,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "studentId and parentId are required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
 
-    const [studentRows, parentRows] = await Promise.all([
-      d1.select({ id: students.id }).from(students).where(and(eq(students.id, studentId), eq(students.schoolId, admin.schoolId))).limit(1),
-      d1.select({ id: users.id }).from(users).where(and(eq(users.id, parentId), eq(users.schoolId, admin.schoolId), eq(users.role, "PARENT"))).limit(1),
+    const [studentDoc, parentDoc] = await Promise.all([
+      Student.findOne({ _id: studentId, schoolId }).select("_id").lean(),
+      User.findOne({ _id: parentId, schoolId, role: "PARENT" }).select("_id").lean(),
     ]);
 
-    if (!studentRows[0] || !parentRows[0]) {
+    if (!studentDoc || !parentDoc) {
       return NextResponse.json({ error: "Student or parent not found" }, { status: 404 });
     }
 
-    const now = new Date();
-    await d1.transaction(async (tx) => {
-      if (isPrimary) {
-        await tx
-          .update(parentWardLinks)
-          .set({ isPrimary: false, updatedAt: now })
-          .where(and(eq(parentWardLinks.schoolId, admin.schoolId), eq(parentWardLinks.studentId, studentId)));
-      }
+    if (isPrimary) {
+      await ParentWardLink.updateMany({ schoolId, studentId: new mongoose.Types.ObjectId(studentId) }, { isPrimary: false });
+    }
 
-      const existing = await tx
-        .select({ id: parentWardLinks.id })
-        .from(parentWardLinks)
-        .where(
-          and(
-            eq(parentWardLinks.schoolId, admin.schoolId),
-            eq(parentWardLinks.studentId, studentId),
-            eq(parentWardLinks.parentId, parentId)
-          )
-        )
-        .limit(1);
-
-      if (existing[0]) {
-        await tx
-          .update(parentWardLinks)
-          .set({ relationship, isPrimary, updatedAt: now })
-          .where(eq(parentWardLinks.id, existing[0].id));
-      } else {
-        await tx.insert(parentWardLinks).values({
-          id: crypto.randomUUID(),
-          schoolId: admin.schoolId,
-          parentId,
-          studentId,
-          relationship,
-          isPrimary,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-    });
+    await ParentWardLink.findOneAndUpdate(
+      { schoolId, parentId: new mongoose.Types.ObjectId(parentId), studentId: new mongoose.Types.ObjectId(studentId) },
+      { relationship, isPrimary },
+      { upsert: true }
+    );
 
     return NextResponse.json({ message: "Parent linked successfully" });
   } catch (error: unknown) {
@@ -104,22 +74,15 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "studentId and parentId are required" }, { status: 400 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
+    await ParentWardLink.findOneAndDelete({
+      schoolId,
+      studentId: new mongoose.Types.ObjectId(studentId),
+      parentId: new mongoose.Types.ObjectId(parentId),
+    });
 
-    await d1
-      .delete(parentWardLinks)
-      .where(
-        and(
-          eq(parentWardLinks.schoolId, admin.schoolId),
-          eq(parentWardLinks.studentId, studentId),
-          eq(parentWardLinks.parentId, parentId)
-        )
-      );
-
-    return NextResponse.json({ message: "Parent unlinked successfully" });
+    return NextResponse.json({ message: "Parent link removed successfully" });
   } catch (error: unknown) {
     console.error("Unlink parent error:", error);
     return NextResponse.json(

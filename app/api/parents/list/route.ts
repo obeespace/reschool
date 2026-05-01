@@ -1,58 +1,39 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { parentWardLinks, users } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const admin: ITokenPayload | null = verifyToken(token || "");
+    if (!admin || admin.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const parents = await User.find({ schoolId, role: "PARENT" }).select("_id fullName email").lean();
+    const parentIds = parents.map((p) => p._id);
 
-    const parents = await d1
-      .select({
-        id: users.id,
-        fullName: users.name,
-        email: users.email,
-      })
-      .from(users)
-      .where(and(eq(users.schoolId, admin.schoolId), eq(users.role, "PARENT")));
-
-    const parentIds = parents.map((parent) => parent.id);
     const wardCounts = parentIds.length
-      ? await d1
-          .select({ parentId: parentWardLinks.parentId, studentId: parentWardLinks.studentId })
-          .from(parentWardLinks)
-          .where(and(eq(parentWardLinks.schoolId, admin.schoolId), inArray(parentWardLinks.parentId, parentIds)))
+      ? await ParentWardLink.aggregate([
+          { $match: { schoolId, parentId: { $in: parentIds } } },
+          { $group: { _id: "$parentId", count: { $sum: 1 } } },
+        ])
       : [];
-
-    const wardCountMap = new Map<string, number>();
-    for (const row of wardCounts) {
-      wardCountMap.set(row.parentId, (wardCountMap.get(row.parentId) || 0) + 1);
-    }
+    const wardCountMap = new Map(wardCounts.map((w) => [w._id.toString(), w.count]));
 
     return NextResponse.json({
-      parents: parents.map((parent) => ({
-        id: parent.id,
-        fullName: parent.fullName,
-        email: parent.email,
-        wardCount: wardCountMap.get(parent.id) || 0,
+      parents: parents.map((p) => ({
+        id: p._id.toString(),
+        fullName: p.fullName,
+        email: p.email,
+        wardCount: wardCountMap.get(p._id.toString()) || 0,
       })),
     });
   } catch (error: unknown) {
-    console.error("Fetch parents error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch parents" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch parents" }, { status: 500 });
   }
 }

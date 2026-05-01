@@ -1,59 +1,40 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { auditLogs } from "@/app/db/schema";
-import { and, desc, eq, like } from "drizzle-orm";
-
-function parseMeta(metaJson: string | null): Record<string, unknown> {
-  if (!metaJson) return {};
-  try {
-    return JSON.parse(metaJson) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
+import connectDB from "@/app/utils/db";
+import AuditLog from "@/app/models/AuditLog";
+import mongoose from "mongoose";
 
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
+    if (!user || user.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { searchParams } = new URL(req.url);
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const filter: Record<string, unknown> = { schoolId, action: /^MARK_/i };
+    const limit = Math.min(Number(searchParams.get("limit") || 100), 500);
+    const page = Math.max(Number(searchParams.get("page") || 1), 1);
 
-    const rows = await d1
-      .select({
-        id: auditLogs.id,
-        actorId: auditLogs.actorId,
-        action: auditLogs.action,
-        metaJson: auditLogs.metaJson,
-        createdAt: auditLogs.createdAt,
-      })
-      .from(auditLogs)
-      .where(and(eq(auditLogs.schoolId, user.schoolId), like(auditLogs.action, "MARK_%")))
-      .orderBy(desc(auditLogs.createdAt));
+    const logs = await AuditLog.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean();
+    const total = await AuditLog.countDocuments(filter);
 
     return NextResponse.json({
-      logs: rows.map((row) => ({
-        id: row.id,
-        actorId: row.actorId,
-        action: row.action,
-        meta: parseMeta(row.metaJson),
-        createdAt: row.createdAt,
+      logs: logs.map((l) => ({
+        _id: l._id.toString(),
+        action: l.action,
+        userId: l.userId?.toString() || null,
+        meta: l.meta || {},
+        createdAt: l.createdAt,
       })),
+      total,
+      page,
+      limit,
     });
   } catch (error: unknown) {
-    console.error("Fetch mark audit logs error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch audit logs" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch audit logs" }, { status: 500 });
   }
 }
 
@@ -61,46 +42,23 @@ export async function POST(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const user: ITokenPayload | null = verifyToken(token || "");
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const action = String(body?.action || "").trim();
+    const action = String(body?.action || "").trim().toUpperCase();
     const meta = body?.meta && typeof body.meta === "object" ? body.meta : {};
+    if (!action.startsWith("MARK_")) return NextResponse.json({ error: "action must start with MARK_" }, { status: 400 });
 
-    if (!action || !action.startsWith("MARK_")) {
-      return NextResponse.json(
-        { error: "action is required and must start with MARK_" },
-        { status: 400 }
-      );
-    }
-
-    const now = new Date();
-    const id = crypto.randomUUID();
-
-    await d1.insert(auditLogs).values({
-      id,
-      schoolId: user.schoolId,
-      actorId: user.userId,
+    await connectDB();
+    const doc = await AuditLog.create({
+      schoolId: new mongoose.Types.ObjectId(user.schoolId),
+      userId: new mongoose.Types.ObjectId(user.userId),
       action,
-      metaJson: JSON.stringify(meta),
-      createdAt: now,
-      updatedAt: now,
+      meta,
     });
 
-    return NextResponse.json({ message: "Audit log recorded", id });
+    return NextResponse.json({ id: doc._id.toString() }, { status: 201 });
   } catch (error: unknown) {
-    console.error("Create mark audit log error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create audit log" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to create audit log" }, { status: 500 });
   }
 }

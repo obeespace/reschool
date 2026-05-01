@@ -1,39 +1,43 @@
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { getTeacherProfileData } from "@/app/utils/schoolRelationships";
+import connectDB from "@/app/utils/db";
+import User from "@/app/models/User";
+import TeacherProfile from "@/app/models/TeacherProfile";
+import mongoose from "mongoose";
 
-export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
-    const admin: ITokenPayload | null = verifyToken(token || "");
+    const user: ITokenPayload | null = verifyToken(token || "");
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
+    const { id } = await params;
+    await connectDB();
+    const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    const { id } = await context.params;
-    const teacherId = String(id || "").trim();
-    if (!teacherId) {
-      return NextResponse.json({ error: "Teacher ID is required" }, { status: 400 });
-    }
+    const teacher = await User.findOne({ schoolId, _id: new mongoose.Types.ObjectId(id), role: "TEACHER" }).lean();
+    if (!teacher) return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    const profile = await TeacherProfile.findOne({ schoolId, userId: new mongoose.Types.ObjectId(id) }).lean();
 
-    const teacher = await getTeacherProfileData(d1, admin.schoolId, teacherId);
-    if (!teacher) {
-      return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ teacher });
+    return NextResponse.json({
+      teacher: {
+        _id: teacher._id.toString(),
+        id: teacher._id.toString(),
+        fullName: teacher.fullName,
+        email: teacher.email,
+        profile: profile
+          ? {
+              classTeacherOf: profile.classTeacherOf ? { _id: profile.classTeacherOf.toString() } : null,
+              subjectsAndClasses: (profile.subjectsAndClasses || []).map((e: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) => ({
+                subjectId: { _id: e.subjectId.toString() },
+                classIds: e.classIds.map((id: mongoose.Types.ObjectId) => ({ _id: id.toString() })),
+              })),
+            }
+          : { classTeacherOf: null, subjectsAndClasses: [] },
+      },
+    });
   } catch (error: unknown) {
-    console.error("Fetch teacher detail error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch teacher detail" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch teacher" }, { status: 500 });
   }
 }
