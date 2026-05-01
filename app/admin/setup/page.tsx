@@ -55,7 +55,7 @@ export default function AdminSetupPage() {
 
     const checkStatus = async () => {
       try {
-        const res = await fetch("/api/admin/setup/status", {
+        const res = await fetch("/api/setup", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
@@ -67,13 +67,15 @@ export default function AdminSetupPage() {
           throw new Error("Failed to load setup status");
         }
 
-        const data: SetupStatusResponse = await res.json();
-        if (data.isComplete) {
+        const data = await res.json();
+        if (data.isSetupComplete) {
+          // Setup already done, go to dashboard
           router.push("/admin/dashboard");
           return;
         }
       } catch (error) {
-        toast.error("Could not verify setup status");
+        // If error checking status, still allow setup page to load
+        console.error("Could not verify setup status:", error);
       } finally {
         setLoading(false);
       }
@@ -106,27 +108,19 @@ export default function AdminSetupPage() {
     setSubmitting(true);
     try {
       const payload = {
-        school: {
-          name: schoolName.trim(),
-          address: address.trim() || undefined,
-        },
-        session: {
-          year: sessionYear,
-          startDate: new Date(`${sessionStartDate}T00:00:00.000Z`).toISOString(),
-          endDate: new Date(`${sessionEndDate}T00:00:00.000Z`).toISOString(),
-        },
-        classes: classValues,
-        arms: armValues,
+        schoolName: schoolName.trim(),
+        address: address.trim() || undefined,
+        classLevels: classValues,
+        classArms: armValues,
         subjects: subjectValues,
-        admissionSettings: {
+        admissionNumberFormat: {
           prefix: prefix.trim(),
           yearFormat,
           numberLength,
         },
-        autoCreateSections: true,
       };
 
-      const res = await fetch("/api/admin/setup/initialize", {
+      const res = await fetch("/api/setup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -140,7 +134,7 @@ export default function AdminSetupPage() {
         throw new Error(data?.error || "Setup failed");
       }
 
-      toast.success("Setup completed successfully");
+      toast.success("Setup completed successfully! Welcome to your dashboard.");
       router.push("/admin/dashboard");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Setup failed";

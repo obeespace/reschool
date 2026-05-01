@@ -33,6 +33,26 @@ export default function LoginPage() {
         const displayName = data?.user?.fullName || data?.user?.name || "there";
         toast.success(`Welcome back, ${displayName}!`);
 
+        // For ADMIN users, check if setup is complete
+        if (data.user.role === "ADMIN") {
+          try {
+            const setupRes = await fetch("/api/setup", {
+              headers: { Authorization: `Bearer ${data.token}` },
+            });
+            if (setupRes.ok) {
+              const setupData = await setupRes.json();
+              if (!setupData.isSetupComplete) {
+                // Setup not complete, redirect to setup wizard
+                router.push("/admin/setup");
+                return;
+              }
+            }
+          } catch (err) {
+            // If we can't check setup status, still allow navigation to dashboard
+            console.error("Could not verify setup status:", err);
+          }
+        }
+
         // Redirect based on role with fallback
         switch (data.user.role) {
           case "ADMIN":
