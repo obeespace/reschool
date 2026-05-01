@@ -65,7 +65,7 @@ export default function Home() {
           }
           toast.success("Payment successful! Your school account has been created.");
           setTimeout(() => {
-            router.push("/admin/dashboard");
+            router.push("/admin/setup");
           }, 1500);
         } else {
           const error = await response.json();
