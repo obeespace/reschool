@@ -54,22 +54,55 @@ export async function POST(req: Request) {
     const now = new Date();
 
     for (const student of toPromote) {
-      await Student.updateOne({ _id: (student as {_id: mongoose.Types.ObjectId})._id }, { $set: { currentClassId: toClassOId } });
-      await StudentLifecycleRecord.findOneAndUpdate(
-        { schoolId, studentId: (student as {_id: mongoose.Types.ObjectId})._id },
-        {
-          $push: {
-            events: {
-              type: "PROMOTION",
-              fromClassId: fromClassOId,
-              toClassId: toClassOId,
-              performedBy: new mongoose.Types.ObjectId(admin.userId),
-              date: now,
+      const stu = student as { _id: mongoose.Types.ObjectId; admissionNumber: string; fullName: string };
+      await Student.updateOne({ _id: stu._id }, { $set: { currentClassId: toClassOId } });
+
+      const toClassDoc = toClass as { level: string; arm: string };
+      const fromClassDoc = await Class.findOne({ schoolId, _id: fromClassOId }).lean() as { level: string; arm: string } | null;
+
+      // Check if lifecycle record already exists
+      const existing = await StudentLifecycleRecord.findOne({ schoolId, studentId: stu._id }).lean();
+      if (existing) {
+        await StudentLifecycleRecord.updateOne(
+          { schoolId, studentId: stu._id },
+          {
+            $set: { currentClass: `${toClassDoc.level} ${toClassDoc.arm}` },
+            $push: {
+              milestones: {
+                academicYear: String(now.getFullYear()),
+                term: 0,
+                classLevel: fromClassDoc?.level || "",
+                classArm: fromClassDoc?.arm || "",
+                termAverage: 0,
+                promoted: true,
+                action: "PROMOTED",
+              },
             },
-          },
-        },
-        { upsert: true }
-      );
+          }
+        );
+      } else {
+        await StudentLifecycleRecord.create({
+          schoolId,
+          studentId: stu._id,
+          admissionDate: now,
+          admissionClass: fromClassDoc ? `${fromClassDoc.level} ${fromClassDoc.arm}` : "Unknown",
+          currentClass: `${toClassDoc.level} ${toClassDoc.arm}`,
+          currentStatus: "ACTIVE",
+          suspensionCount: 0,
+          overallPerformance: { consistencyScore: 0 },
+          milestones: [
+            {
+              academicYear: String(now.getFullYear()),
+              term: 0,
+              classLevel: fromClassDoc?.level || "",
+              classArm: fromClassDoc?.arm || "",
+              termAverage: 0,
+              promoted: true,
+              action: "PROMOTED",
+            },
+          ],
+        });
+      }
     }
 
     return NextResponse.json({ message: "Students promoted", promoted: toPromote.length, fromClassId, toClassId });

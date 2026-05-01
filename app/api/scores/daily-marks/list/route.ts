@@ -59,8 +59,8 @@ export async function GET(req: Request) {
         classId: m.classId.toString(),
         assessmentType: m.assessmentType,
         score: m.score,
-        assessmentDate: m.assessmentDate,
-        notes: m.notes || null,
+        assessmentDate: m.assessmentDate || m.recordedDate || null,
+        notes: (m as Record<string, unknown>).feedbackNotes as string || null,
       })),
     });
   } catch (error: unknown) {

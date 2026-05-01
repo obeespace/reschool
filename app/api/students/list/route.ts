@@ -32,7 +32,13 @@ export async function GET(req: Request) {
         admissionNumber: row.admissionNumber,
         dateOfBirth: row.dateOfBirth,
         gender: row.gender,
+        currentClassId: row.currentClassId ? (row.currentClassId as mongoose.Types.ObjectId).toString() : null,
         currentClass: row.currentClassId ? classMap.get((row.currentClassId as mongoose.Types.ObjectId).toString()) || null : null,
+        photoUrl: (row as Record<string, unknown>).photoUrl as string || null,
+        track: (row as Record<string, unknown>).track as string || null,
+        house: (row as Record<string, unknown>).house as string || null,
+        isPrefect: Boolean((row as Record<string, unknown>).isPrefect),
+        prefectTitle: (row as Record<string, unknown>).prefectTitle as string || null,
       })),
     });
   } catch (error: unknown) {

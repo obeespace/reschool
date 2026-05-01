@@ -15,7 +15,7 @@ export interface IReportCard {
     subjectName: string;
     classwork: number;
     homework: number;
-    evaluation: number;
+    test: number;
     exam: number;
     total: number;
     grade: string;

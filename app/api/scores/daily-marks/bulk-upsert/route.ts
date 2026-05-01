@@ -56,8 +56,10 @@ export async function POST(req: Request) {
         $set: {
           score: Number(entry.score),
           teacherId: new mongoose.Types.ObjectId(teacher.userId),
+          recordedBy: new mongoose.Types.ObjectId(teacher.userId),
+          lastModifiedBy: new mongoose.Types.ObjectId(teacher.userId),
           academicYearId: activeTerm.academicYearId,
-          notes: entry.notes || null,
+          feedbackNotes: entry.notes || null,
         },
       };
       return { updateOne: { filter, update, upsert: true } };

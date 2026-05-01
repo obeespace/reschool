@@ -72,10 +72,15 @@ export async function POST(req: Request) {
     const attendanceDate = new Date(dateStr);
     attendanceDate.setHours(0, 0, 0, 0);
 
+    const markedById = new mongoose.Types.ObjectId(teacher.userId);
+    const markedTime = new Date();
+
     const mongoRecords = records.map((r) => ({
       studentId: new mongoose.Types.ObjectId(r.studentId),
       status: r.status,
-      notes: r.notes || null,
+      excuseReason: r.notes || null,
+      markedBy: markedById,
+      markedTime,
     }));
 
     await AttendanceRecord.findOneAndUpdate(

@@ -55,6 +55,19 @@ export async function POST(req: Request) {
     const parentPhone = String(body?.parentPhone || "").trim();
     const parentPassword = String(body?.parentPassword || "").trim();
 
+    // Optional enrichment fields
+    const photoUrl = body?.photoUrl ? String(body.photoUrl).trim() : undefined;
+    const track = body?.track ? String(body.track).trim().toUpperCase() : undefined;
+    const house = body?.house ? String(body.house).trim() : undefined;
+    const bloodGroup = body?.bloodGroup ? String(body.bloodGroup).trim() : undefined;
+    const genotype = body?.genotype ? String(body.genotype).trim().toUpperCase() : undefined;
+    const allergies = Array.isArray(body?.allergies) ? body.allergies.map(String).filter(Boolean) : undefined;
+    const medicalConditions = Array.isArray(body?.medicalConditions) ? body.medicalConditions.map(String).filter(Boolean) : undefined;
+    const emergencyContactName = body?.emergencyContactName ? String(body.emergencyContactName).trim() : undefined;
+    const emergencyContactPhone = body?.emergencyContactPhone ? String(body.emergencyContactPhone).trim() : undefined;
+    const isPrefect = body?.isPrefect === true;
+    const prefectTitle = body?.prefectTitle ? String(body.prefectTitle).trim() : undefined;
+
     if (!fullName) return NextResponse.json({ error: "Full name is required" }, { status: 400 });
 
     await connectDB();
@@ -84,6 +97,17 @@ export async function POST(req: Request) {
       gender,
       dateOfBirth,
       currentClassId: classOId || undefined,
+      ...(photoUrl !== undefined && { photoUrl }),
+      ...(track !== undefined && { track }),
+      ...(house !== undefined && { house }),
+      ...(bloodGroup !== undefined && { bloodGroup }),
+      ...(genotype !== undefined && { genotype }),
+      ...(allergies !== undefined && { allergies }),
+      ...(medicalConditions !== undefined && { medicalConditions }),
+      ...(emergencyContactName !== undefined && { emergencyContactName }),
+      ...(emergencyContactPhone !== undefined && { emergencyContactPhone }),
+      ...(isPrefect && { isPrefect }),
+      ...(prefectTitle !== undefined && { prefectTitle }),
     });
 
     let parentUserId: mongoose.Types.ObjectId | null = null;

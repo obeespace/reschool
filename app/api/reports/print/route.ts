@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       { _id: report._id },
       {
         $inc: { printCount: 1 },
-        $push: { printHistory: { printedBy: new mongoose.Types.ObjectId(user.userId), printedAt: new Date() } },
+        $push: { printHistory: { printDate: new Date(), printedBy: new mongoose.Types.ObjectId(user.userId) } },
       }
     );
 

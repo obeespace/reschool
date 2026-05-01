@@ -203,10 +203,10 @@ export default function AdminFeesPage() {
       <div className="p-6 space-y-6">
         {/* Filters */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex gap-5 flex-wrap items-end">
-          <div className="flex-1 min-w-[180px]">
+          <div className="flex-1 min-w-45">
             <Select label="Term" value={selectedTerm} onChange={(e) => handleTermChange(e.target.value)} options={termOptions} />
           </div>
-          <div className="flex-1 min-w-[180px]">
+          <div className="flex-1 min-w-45">
             <Select label="Class" value={selectedClass} onChange={(e) => handleClassChange(e.target.value)} options={classOptions} />
           </div>
         </div>
@@ -268,7 +268,7 @@ export default function AdminFeesPage() {
                       updated[i] = { ...updated[i], amountDue: e.target.value };
                       setRecordForm({ ...recordForm, fees: updated });
                     }}
-                    className="w-full max-w-[120px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    className="w-full max-w-30 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                   />
                   <input
                     type="number" placeholder="0" min="0"
@@ -278,7 +278,7 @@ export default function AdminFeesPage() {
                       updated[i] = { ...updated[i], amountPaid: e.target.value };
                       setRecordForm({ ...recordForm, fees: updated });
                     }}
-                    className="w-full max-w-[120px] px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    className="w-full max-w-30 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                   />
                 </div>
               ))}

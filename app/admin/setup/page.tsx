@@ -235,7 +235,7 @@ export default function AdminSetupPage() {
 
           <div className="space-y-4">
             {terms.map((term, idx) => (
-              <div key={term.number} className="bg-gradient-to-br from-indigo-50 to-indigo-25 rounded-lg border border-indigo-100 p-4">
+              <div key={term.number} className="bg-linear-to-br from-indigo-50 to-indigo-25 rounded-lg border border-indigo-100 p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 text-white font-bold text-xs">
                     {term.number}

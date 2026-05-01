@@ -48,9 +48,14 @@ export async function GET(req: Request) {
         return NextResponse.json({ scores: [] });
       }
 
-      filter.classId = {
-        $in: [...allowedClassIds].map((id) => new mongoose.Types.ObjectId(id)),
-      };
+      // Restrict to teacher's assigned classes; honour an explicit classId param if within allowed set
+      if (classId && allowedClassIds.has(classId)) {
+        filter.classId = new mongoose.Types.ObjectId(classId);
+      } else {
+        filter.classId = {
+          $in: [...allowedClassIds].map((id) => new mongoose.Types.ObjectId(id)),
+        };
+      }
     }
 
     if (user.role === "PARENT") {

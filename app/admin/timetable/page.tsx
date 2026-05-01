@@ -144,7 +144,7 @@ export default function AdminTimetablePage() {
       <div className="p-6 space-y-6">
         {/* Filters */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex gap-5 flex-wrap items-end">
-          <div className="flex-1 min-w-[180px]">
+          <div className="flex-1 min-w-45">
             <Select
               label="Class"
               value={selectedClass}
@@ -152,7 +152,7 @@ export default function AdminTimetablePage() {
               options={[{ value: "", label: "Select class…" }, ...classes.map((c) => ({ value: c._id, label: `${c.level} ${c.arm}` }))]}
             />
           </div>
-          <div className="flex-1 min-w-[180px]">
+          <div className="flex-1 min-w-45">
             <Select
               label="Term"
               value={selectedTerm}
@@ -202,21 +202,21 @@ export default function AdminTimetablePage() {
                             type="time"
                             value={schedule[0]?.periods[pi]?.startTime ?? ""}
                             onChange={(e) => DAYS.forEach((_, di) => updatePeriod(di, pi, "startTime", e.target.value))}
-                            className="w-[88px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white"
+                            className="w-22 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white"
                           />
                           <span className="text-gray-300 font-light">—</span>
                           <input
                             type="time"
                             value={schedule[0]?.periods[pi]?.endTime ?? ""}
                             onChange={(e) => DAYS.forEach((_, di) => updatePeriod(di, pi, "endTime", e.target.value))}
-                            className="w-[88px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white"
+                            className="w-22 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white"
                           />
                         </div>
                       </td>
                       {schedule.map((day, di) => {
                         const p = day.periods[pi];
                         return (
-                          <td key={day.day} className="px-2 py-2 min-w-[140px]">
+                          <td key={day.day} className="px-2 py-2 min-w-35">
                             <input
                               placeholder="Subject"
                               value={p?.subjectName ?? ""}

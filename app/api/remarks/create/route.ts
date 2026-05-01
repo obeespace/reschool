@@ -40,7 +40,13 @@ export async function GET(req: Request) {
         _id: r._id.toString(),
         studentId: r.studentId.toString(),
         studentName: studentMap.get(r.studentId.toString()) || "Unknown",
-        remark: r.remark,
+        remark: r.customRemark || "",
+        customRemark: r.customRemark || "",
+        type: r.type,
+        academicPerformance: r.academicPerformance,
+        classParticipation: r.classParticipation,
+        attitudeToDuties: r.attitudeToDuties,
+        promotionRecommendation: r.promotionRecommendation || null,
         classId: r.classId?.toString() || null,
         createdAt: r.createdAt,
       })),
@@ -59,22 +65,38 @@ export async function POST(req: Request) {
     const body = await req.json();
     const studentId = String(body?.studentId || "").trim();
     const classId = String(body?.classId || "").trim();
-    const remark = String(body?.remark || "").trim();
+    // Support both simple `remark` and full structured fields
+    const customRemark = String(body?.remark || body?.customRemark || "").trim();
+    const type = body?.type === "CLASS_TEACHER" ? "CLASS_TEACHER" : "SUBJECT";
+    const subjectId = body?.subjectId ? String(body.subjectId).trim() : null;
+    const academicPerformance = body?.academicPerformance || "GOOD";
+    const classParticipation = body?.classParticipation || "GOOD";
+    const attitudeToDuties = body?.attitudeToDuties || "GOOD";
+    const promotionRecommendation = body?.promotionRecommendation || "PENDING";
 
-    if (!studentId || !remark) return NextResponse.json({ error: "studentId and remark are required" }, { status: 400 });
+    if (!studentId || !customRemark) return NextResponse.json({ error: "studentId and remark are required" }, { status: 400 });
+    if (!classId) return NextResponse.json({ error: "classId is required" }, { status: 400 });
 
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
 
     const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
+    if (!activeTerm) return NextResponse.json({ error: "No active term found" }, { status: 400 });
 
     const doc = await TeacherRemark.create({
       schoolId,
-      teacherId: new mongoose.Types.ObjectId(teacher.userId),
+      remarkedBy: new mongoose.Types.ObjectId(teacher.userId),
       studentId: new mongoose.Types.ObjectId(studentId),
-      classId: classId ? new mongoose.Types.ObjectId(classId) : undefined,
-      termId: activeTerm ? activeTerm._id : undefined,
-      remark,
+      classId: new mongoose.Types.ObjectId(classId),
+      termId: activeTerm._id,
+      academicYearId: activeTerm.academicYearId,
+      type,
+      ...(subjectId && { subjectId: new mongoose.Types.ObjectId(subjectId) }),
+      academicPerformance,
+      classParticipation,
+      attitudeToDuties,
+      customRemark,
+      promotionRecommendation,
     });
 
     return NextResponse.json({ message: "Remark created", id: doc._id.toString() }, { status: 201 });

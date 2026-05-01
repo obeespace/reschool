@@ -23,6 +23,7 @@ export async function GET(req: Request) {
         id: (row._id as mongoose.Types.ObjectId).toString(),
         name: row.name,
         code: row.code || row.name.split(/\s+/).map((p: string) => p[0]?.toUpperCase() || "").join("").slice(0, 6),
+        waecCode: row.waecCode || null,
       })),
     });
   } catch (error: unknown) {
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const name = String(body?.name || "").trim();
+    const waecCode = body?.waecCode ? String(body.waecCode).trim() : undefined;
     if (!name) {
       return NextResponse.json({ error: "Subject name is required" }, { status: 400 });
     }
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     }
 
     const code = name.split(/\s+/).map((p: string) => p[0]?.toUpperCase() || "").join("").slice(0, 6);
-    const subject = await Subject.create({ schoolId, name, code });
+    const subject = await Subject.create({ schoolId, name, code, ...(waecCode !== undefined && { waecCode }) });
 
     return NextResponse.json({
       message: "Subject created successfully",
@@ -73,6 +75,7 @@ export async function POST(req: Request) {
         id: (subject._id as mongoose.Types.ObjectId).toString(),
         name: subject.name,
         code: subject.code,
+        waecCode: subject.waecCode || null,
       },
     });
   } catch (error: unknown) {
