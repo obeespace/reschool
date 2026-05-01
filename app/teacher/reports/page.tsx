@@ -22,14 +22,46 @@ type TeacherReport = {
   printCount: number;
 };
 
+type ArchiveYear = { id: string; name: string; isActive: boolean };
+type ArchiveTerm = {
+  id: string;
+  termNumber: number;
+  academicYearId: string;
+  academicYearName: string;
+  isActive: boolean;
+};
+
 export default function TeacherReportsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState<TeacherReport[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState("");
+  const [selectedTermId, setSelectedTermId] = useState("");
+  const [academicYears, setAcademicYears] = useState<ArchiveYear[]>([]);
+  const [terms, setTerms] = useState<ArchiveTerm[]>([]);
   const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const fetchReports = useCallback(async (classId?: string) => {
+  const fetchArchiveOptions = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const res = await fetch("/api/records/archive-options", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+
+    const years: ArchiveYear[] = data.academicYears || [];
+    const termItems: ArchiveTerm[] = data.terms || [];
+    setAcademicYears(years);
+    setTerms(termItems);
+
+    if (data.activeAcademicYearId) setSelectedAcademicYearId(data.activeAcademicYearId);
+    if (data.activeTermId) setSelectedTermId(data.activeTermId);
+  }, []);
+
+  const fetchReports = useCallback(async (classId?: string, termId?: string, academicYearId?: string) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -37,7 +69,12 @@ export default function TeacherReportsPage() {
         return;
       }
 
-      const query = classId ? `?classId=${encodeURIComponent(classId)}` : "";
+      const params = new URLSearchParams();
+      if (classId) params.set("classId", classId);
+      if (termId) params.set("termId", termId);
+      else if (academicYearId) params.set("academicYearId", academicYearId);
+      const query = params.toString() ? `?${params.toString()}` : "";
+
       const response = await fetch(`/api/reports/list${query}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -77,7 +114,11 @@ export default function TeacherReportsPage() {
       }
 
       toast.success("Report print recorded");
-      await fetchReports(selectedClassId || undefined);
+      await fetchReports(
+        selectedClassId || undefined,
+        selectedTermId || undefined,
+        selectedAcademicYearId || undefined
+      );
     } catch (error) {
       console.error("Teacher print report error:", error);
       toast.error("Failed to record print");
@@ -87,8 +128,16 @@ export default function TeacherReportsPage() {
   };
 
   useEffect(() => {
-    fetchReports();
-  }, [fetchReports]);
+    void fetchArchiveOptions();
+  }, [fetchArchiveOptions]);
+
+  useEffect(() => {
+    void fetchReports(
+      selectedClassId || undefined,
+      selectedTermId || undefined,
+      selectedAcademicYearId || undefined
+    );
+  }, [fetchReports, selectedAcademicYearId, selectedClassId, selectedTermId]);
 
   const classOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -106,6 +155,27 @@ export default function TeacherReportsPage() {
     return reports.filter((report) => report.classId === selectedClassId);
   }, [reports, selectedClassId]);
 
+  const yearOptions = useMemo(
+    () => [
+      { value: "", label: "All Sessions" },
+      ...academicYears.map((y) => ({ value: y.id, label: `${y.name}${y.isActive ? " (Active)" : ""}` })),
+    ],
+    [academicYears]
+  );
+
+  const termOptions = useMemo(() => {
+    const source = selectedAcademicYearId
+      ? terms.filter((t) => t.academicYearId === selectedAcademicYearId)
+      : terms;
+    return [
+      { value: "", label: "All Terms" },
+      ...source.map((t) => ({
+        value: t.id,
+        label: `${t.academicYearName} - ${t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term${t.isActive ? " (Active)" : ""}`,
+      })),
+    ];
+  }, [selectedAcademicYearId, terms]);
+
   if (loading) {
     return (
       <DashboardLayout role="TEACHER">
@@ -119,16 +189,30 @@ export default function TeacherReportsPage() {
       <PageHeader title="Report Visibility" description="View released report cards for your assigned classes" />
 
       <div className="p-6 space-y-6">
-        <div className="bg-white rounded-lg shadow p-4 max-w-md">
-          <Select
-            label="Filter by Class"
-            value={selectedClassId}
-            onChange={(e) => {
-              const nextClassId = e.target.value;
-              setSelectedClassId(nextClassId);
-            }}
-            options={classOptions}
-          />
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Select
+              label="Session"
+              value={selectedAcademicYearId}
+              onChange={(e) => {
+                setSelectedAcademicYearId(e.target.value);
+                setSelectedTermId("");
+              }}
+              options={yearOptions}
+            />
+            <Select
+              label="Term"
+              value={selectedTermId}
+              onChange={(e) => setSelectedTermId(e.target.value)}
+              options={termOptions}
+            />
+            <Select
+              label="Class"
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              options={classOptions}
+            />
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow overflow-hidden">

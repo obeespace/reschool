@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { Button, PageHeader } from "@/app/components/UIComponents";
+import { Button, PageHeader, Select } from "@/app/components/UIComponents";
 
 type ReportCard = {
   id: string;
@@ -28,6 +28,15 @@ type ClassSummary = {
   lowAttendance: number;
 };
 
+type ArchiveYear = { id: string; name: string; isActive: boolean };
+type ArchiveTerm = {
+  id: string;
+  termNumber: number;
+  academicYearId: string;
+  academicYearName: string;
+  isActive: boolean;
+};
+
 export default function AdminReportsPage() {
   const router = useRouter();
   const [stats, setStats] = useState({
@@ -40,14 +49,39 @@ export default function AdminReportsPage() {
   const [reportCards, setReportCards] = useState<ReportCard[]>([]);
   const [classSummaries, setClassSummaries] = useState<ClassSummary[]>([]);
   const [termId, setTermId] = useState<string | null>(null);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState("");
+  const [selectedTermId, setSelectedTermId] = useState("");
+  const [academicYears, setAcademicYears] = useState<ArchiveYear[]>([]);
+  const [terms, setTerms] = useState<ArchiveTerm[]>([]);
   const [generating, setGenerating] = useState(false);
   const [releasingClassId, setReleasingClassId] = useState<string | null>(null);
   const [releasingAll, setReleasingAll] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const loadReportCards = useCallback(async (token: string) => {
+  const loadArchiveOptions = useCallback(async (token: string) => {
     try {
-      const res = await fetch("/api/reports/list?limit=500", {
+      const res = await fetch("/api/records/archive-options", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setAcademicYears(data.academicYears || []);
+      setTerms(data.terms || []);
+      if (data.activeAcademicYearId) setSelectedAcademicYearId(data.activeAcademicYearId);
+      if (data.activeTermId) setSelectedTermId(data.activeTermId);
+    } catch (err) {
+      console.error("Load archive options error:", err);
+    }
+  }, []);
+
+  const loadReportCards = useCallback(async (token: string, selectedTerm?: string, selectedYear?: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "500");
+      if (selectedTerm) params.set("termId", selectedTerm);
+      else if (selectedYear) params.set("academicYearId", selectedYear);
+
+      const res = await fetch(`/api/reports/list?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
@@ -87,8 +121,14 @@ export default function AdminReportsPage() {
     }
 
     fetchStats();
-    loadReportCards(token);
-  }, [router, loadReportCards]);
+    void loadArchiveOptions(token);
+  }, [router, loadArchiveOptions]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    void loadReportCards(token, selectedTermId || undefined, selectedAcademicYearId || undefined);
+  }, [loadReportCards, selectedAcademicYearId, selectedTermId]);
 
   const fetchStats = async () => {
     try {
@@ -216,6 +256,37 @@ export default function AdminReportsPage() {
         title="Reports & Analytics"
         description="Generate, review, and release term report cards"
       />
+
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Select
+            label="Session"
+            value={selectedAcademicYearId}
+            onChange={(e) => {
+              setSelectedAcademicYearId(e.target.value);
+              setSelectedTermId("");
+            }}
+            options={[
+              { value: "", label: "All Sessions" },
+              ...academicYears.map((y) => ({ value: y.id, label: `${y.name}${y.isActive ? " (Active)" : ""}` })),
+            ]}
+          />
+          <Select
+            label="Term"
+            value={selectedTermId}
+            onChange={(e) => setSelectedTermId(e.target.value)}
+            options={[
+              { value: "", label: "All Terms" },
+              ...terms
+                .filter((t) => !selectedAcademicYearId || t.academicYearId === selectedAcademicYearId)
+                .map((t) => ({
+                  value: t.id,
+                  label: `${t.academicYearName} - ${t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term${t.isActive ? " (Active)" : ""}`,
+                })),
+            ]}
+          />
+        </div>
+      </div>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">

@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { Button, LoadingSpinner, PageHeader } from "@/app/components/UIComponents";
+import { Button, LoadingSpinner, PageHeader, Select } from "@/app/components/UIComponents";
 
 type ParentReport = {
   id: string;
@@ -21,13 +21,43 @@ type ParentReport = {
   isReleased: boolean;
 };
 
+type ArchiveYear = { id: string; name: string; isActive: boolean };
+type ArchiveTerm = {
+  id: string;
+  termNumber: number;
+  academicYearId: string;
+  academicYearName: string;
+  isActive: boolean;
+};
+
 export default function ParentReportsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState<ParentReport[]>([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState("");
+  const [selectedTermId, setSelectedTermId] = useState("");
+  const [academicYears, setAcademicYears] = useState<ArchiveYear[]>([]);
+  const [terms, setTerms] = useState<ArchiveTerm[]>([]);
   const [printingId, setPrintingId] = useState<string | null>(null);
 
-  const fetchReports = useCallback(async () => {
+  const fetchArchiveOptions = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const res = await fetch("/api/records/archive-options", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+
+    setAcademicYears(data.academicYears || []);
+    setTerms(data.terms || []);
+
+    if (data.activeAcademicYearId) setSelectedAcademicYearId(data.activeAcademicYearId);
+    if (data.activeTermId) setSelectedTermId(data.activeTermId);
+  }, []);
+
+  const fetchReports = useCallback(async (termId?: string, academicYearId?: string) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -35,7 +65,12 @@ export default function ParentReportsPage() {
         return;
       }
 
-      const response = await fetch("/api/reports/list", {
+      const params = new URLSearchParams();
+      if (termId) params.set("termId", termId);
+      else if (academicYearId) params.set("academicYearId", academicYearId);
+      const query = params.toString() ? `?${params.toString()}` : "";
+
+      const response = await fetch(`/api/reports/list${query}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -74,7 +109,7 @@ export default function ParentReportsPage() {
       }
 
       toast.success("Report print recorded");
-      await fetchReports();
+      await fetchReports(selectedTermId || undefined, selectedAcademicYearId || undefined);
     } catch (error) {
       console.error("Parent print report error:", error);
       toast.error("Failed to record print");
@@ -84,8 +119,33 @@ export default function ParentReportsPage() {
   };
 
   useEffect(() => {
-    fetchReports();
-  }, [fetchReports]);
+    void fetchArchiveOptions();
+  }, [fetchArchiveOptions]);
+
+  useEffect(() => {
+    void fetchReports(selectedTermId || undefined, selectedAcademicYearId || undefined);
+  }, [fetchReports, selectedAcademicYearId, selectedTermId]);
+
+  const yearOptions = useMemo(
+    () => [
+      { value: "", label: "All Sessions" },
+      ...academicYears.map((y) => ({ value: y.id, label: `${y.name}${y.isActive ? " (Active)" : ""}` })),
+    ],
+    [academicYears]
+  );
+
+  const termOptions = useMemo(() => {
+    const source = selectedAcademicYearId
+      ? terms.filter((t) => t.academicYearId === selectedAcademicYearId)
+      : terms;
+    return [
+      { value: "", label: "All Terms" },
+      ...source.map((t) => ({
+        value: t.id,
+        label: `${t.academicYearName} - ${t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term${t.isActive ? " (Active)" : ""}`,
+      })),
+    ];
+  }, [selectedAcademicYearId, terms]);
 
   if (loading) {
     return (
@@ -99,7 +159,27 @@ export default function ParentReportsPage() {
     <DashboardLayout role="PARENT">
       <PageHeader title="Reports" description="View released report cards for your ward(s)" />
 
-      <div className="p-6">
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Select
+              label="Session"
+              value={selectedAcademicYearId}
+              onChange={(e) => {
+                setSelectedAcademicYearId(e.target.value);
+                setSelectedTermId("");
+              }}
+              options={yearOptions}
+            />
+            <Select
+              label="Term"
+              value={selectedTermId}
+              onChange={(e) => setSelectedTermId(e.target.value)}
+              options={termOptions}
+            />
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Released Report Cards</h2>

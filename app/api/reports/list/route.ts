@@ -5,6 +5,7 @@ import ReportCard from "@/app/models/ReportCard";
 import TeacherProfile from "@/app/models/TeacherProfile";
 import ParentWardLink from "@/app/models/ParentWardLink";
 import Term from "@/app/models/Term";
+import AcademicYear from "@/app/models/AcademicYear";
 import mongoose from "mongoose";
 
 export async function GET(req: Request) {
@@ -18,10 +19,13 @@ export async function GET(req: Request) {
     const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
     const termId = searchParams.get("termId");
+    const academicYearId = searchParams.get("academicYearId");
     const filter: Record<string, unknown> = { schoolId };
 
     if (termId) {
       filter.termId = new mongoose.Types.ObjectId(termId);
+    } else if (academicYearId) {
+      filter.academicYearId = new mongoose.Types.ObjectId(academicYearId);
     } else {
       const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
       if (activeTerm) filter.termId = activeTerm._id;
@@ -44,23 +48,40 @@ export async function GET(req: Request) {
       filter.approvedBy = { $ne: null }; // Only released reports
     }
 
-    const reports = await ReportCard.find(filter).lean();
+    const reports = await ReportCard.find(filter).sort({ createdAt: -1 }).lean();
+    const yearIds = [...new Set(reports.map((r) => r.academicYearId.toString()))];
+    const years = yearIds.length
+      ? await AcademicYear.find({ _id: { $in: yearIds } }).select("_id name").lean()
+      : [];
+    const yearMap = new Map(years.map((y) => [y._id.toString(), y.name]));
 
     return NextResponse.json({
       reports: reports.map((r) => ({
+        id: r._id.toString(),
         _id: r._id.toString(),
         studentId: r.studentId.toString(),
         classId: r.classId.toString(),
+        className: r.className,
         termId: r.termId.toString(),
+        academicYearId: r.academicYearId.toString(),
+        termNumber: r.term,
+        yearLabel: yearMap.get(r.academicYearId.toString()) || `${r.year}`,
         subjectScores: r.subjectScores || [],
         totalScore: r.totalScore ?? null,
-        average: r.average ?? null,
-        position: r.position ?? null,
+        averageScore: r.averageScore ?? null,
+        classRanking: r.classRanking ?? null,
+        classSize: r.classSize ?? null,
+        attendancePercentage: r.attendancePercentage ?? null,
+        lowAttendanceAlert: (r.attendancePercentage ?? 100) < 75,
         isReleased: Boolean(r.approvedBy),
         approvedBy: r.approvedBy ? r.approvedBy.toString() : null,
         printCount: r.printCount ?? 0,
         createdAt: r.createdAt,
       })),
+      appliedFilters: {
+        termId: termId || null,
+        academicYearId: academicYearId || null,
+      },
     });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch reports" }, { status: 500 });

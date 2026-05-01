@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/app/utils/db";
 import DailyMark from "@/app/models/DailyMark";
 import Term from "@/app/models/Term";
+import TeacherProfile from "@/app/models/TeacherProfile";
 import mongoose from "mongoose";
 
 export async function POST(req: Request) {
@@ -18,6 +19,12 @@ export async function POST(req: Request) {
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
 
+    const profile = await TeacherProfile.findOne({
+      schoolId,
+      userId: new mongoose.Types.ObjectId(teacher.userId),
+    }).lean();
+    if (!profile) return NextResponse.json({ error: "Teacher profile not found" }, { status: 403 });
+
     const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
     if (!activeTerm) return NextResponse.json({ error: "No active term" }, { status: 400 });
     if (!activeTerm.isPaid) return NextResponse.json({ error: "Term not paid" }, { status: 400 });
@@ -25,6 +32,15 @@ export async function POST(req: Request) {
 
     const validTypes = ["CLASSWORK", "HOMEWORK", "EVALUATION", "EXAM"];
     const ops = entries.map((entry) => {
+      const allowed = (profile.subjectsAndClasses || []).some(
+        (s: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) =>
+          s.subjectId.toString() === String(entry.subjectId) &&
+          (s.classIds || []).some((cid) => cid.toString() === String(entry.classId))
+      );
+      if (!allowed) {
+        throw new Error("You are not assigned to one or more class-subject entries");
+      }
+
       const assessmentType = (entry.assessmentType || "CLASSWORK").toUpperCase().trim();
       const safeType = validTypes.includes(assessmentType) ? assessmentType : "CLASSWORK";
       const filter = {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import connectDB from "@/app/utils/db";
 import DailyMark from "@/app/models/DailyMark";
 import Term from "@/app/models/Term";
+import TeacherProfile from "@/app/models/TeacherProfile";
 import mongoose from "mongoose";
 
 export async function POST(req: Request) {
@@ -22,8 +23,22 @@ export async function POST(req: Request) {
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(teacher.schoolId);
 
+    const profile = await TeacherProfile.findOne({
+      schoolId,
+      userId: new mongoose.Types.ObjectId(teacher.userId),
+    }).lean();
+    if (!profile) return NextResponse.json({ error: "Teacher profile not found" }, { status: 403 });
+
+    const allowed = (profile.subjectsAndClasses || []).some(
+      (s: {subjectId: mongoose.Types.ObjectId; classIds: mongoose.Types.ObjectId[]}) =>
+        s.subjectId.toString() === subjectId &&
+        (s.classIds || []).some((cid) => cid.toString() === classId)
+    );
+    if (!allowed) return NextResponse.json({ error: "You are not assigned to this subject/class combination" }, { status: 403 });
+
     const activeTerm = await Term.findOne({ schoolId, isActive: true }).lean();
     if (!activeTerm) return NextResponse.json({ error: "No active term" }, { status: 400 });
+    if (!activeTerm.isPaid) return NextResponse.json({ error: "Term subscription not paid" }, { status: 400 });
     if (activeTerm.isClosed) return NextResponse.json({ error: "Term is closed" }, { status: 400 });
 
     const filter: Record<string, unknown> = {
