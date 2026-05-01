@@ -1,9 +1,12 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { schools, sessions, terms, users } from "@/app/db/schema";
-import { eq } from "drizzle-orm";
+import connectDB from "@/app/utils/db";
+import AcademicYear from "@/app/models/AcademicYear";
+import School from "@/app/models/School";
+import Term from "@/app/models/Term";
+import User from "@/app/models/User";
 
 function toDate(value: unknown): Date | null {
   if (!value) return null;
@@ -13,10 +16,7 @@ function toDate(value: unknown): Date | null {
 
 export async function POST(req: Request) {
   try {
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
 
     const body = await req.json();
 
@@ -37,8 +37,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
-    const existingEmail = await d1.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-    if (existingEmail.length > 0) {
+    const existingEmail = await User.findOne({ email }).select("_id").lean();
+    if (existingEmail) {
       return NextResponse.json(
         { error: "An account with this email already exists" },
         { status: 409 }
@@ -46,10 +46,8 @@ export async function POST(req: Request) {
     }
 
     const now = new Date();
-    const schoolId = crypto.randomUUID();
-    const userId = crypto.randomUUID();
-    const sessionId = crypto.randomUUID();
-    const termId = crypto.randomUUID();
+    const schoolId = new mongoose.Types.ObjectId();
+    const userId = new mongoose.Types.ObjectId();
 
     const sessionYear = `${now.getFullYear()}/${now.getFullYear() + 1}`;
     const sessionStart = toDate(body?.sessionStartDate) || new Date(now.getFullYear(), 8, 1);
@@ -59,62 +57,60 @@ export async function POST(req: Request) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    await d1.transaction(async (tx) => {
-      await tx.insert(schools).values({
-        id: schoolId,
-        name: schoolName,
-        address: null,
-        logoUrl: null,
-        createdAt: now,
-        updatedAt: now,
-      });
+    // Use a stable slug to keep compatibility with existing links in the product.
+    const slugBase = schoolName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-") || "school";
+    const domainSlug = `${slugBase}-${schoolId.toString().slice(-6)}`;
 
-      await tx.insert(users).values({
-        id: userId,
-        schoolId,
-        name: adminName,
-        email,
-        passwordHash,
-        role: "ADMIN",
-        createdAt: now,
-        updatedAt: now,
-      });
+    await School.create({
+      _id: schoolId,
+      name: schoolName,
+      domainSlug,
+      adminUserId: userId,
+    });
 
-      await tx.insert(sessions).values({
-        id: sessionId,
-        schoolId,
-        year: sessionYear,
-        startDate: sessionStart,
-        endDate: sessionEnd,
-        isCurrent: true,
-        createdAt: now,
-        updatedAt: now,
-      });
+    await User.create({
+      _id: userId,
+      schoolId,
+      fullName: adminName,
+      email,
+      passwordHash,
+      role: "ADMIN",
+      isActive: true,
+    });
 
-      await tx.insert(terms).values({
-        id: termId,
-        schoolId,
-        sessionId,
-        termNumber: 1,
-        name: "1st Term",
-        startDate: termStart,
-        endDate: termEnd,
-        isCurrent: true,
-        isPaid: true,
-        isClosed: false,
-        paymentDate: now,
-        paymentReference: `REG-${now.getTime()}`,
-        createdAt: now,
-        updatedAt: now,
-      });
+    const year = await AcademicYear.create({
+      schoolId,
+      name: sessionYear,
+      startDate: sessionStart,
+      endDate: sessionEnd,
+      isActive: true,
+      term: 1,
+    });
+
+    await Term.create({
+      schoolId,
+      academicYearId: year._id,
+      termNumber: 1,
+      startDate: termStart,
+      endDate: termEnd,
+      isActive: true,
+      isPaid: true,
+      isClosed: false,
+      paymentDate: now,
+      paymentReference: `REG-${now.getTime()}`,
     });
 
     const token = jwt.sign(
       {
-        userId,
+        userId: userId.toString(),
         role: "ADMIN",
         fullName: adminName,
-        schoolId,
+        schoolId: schoolId.toString(),
       },
       JWT_SECRET,
       { expiresIn: "7d" }
@@ -123,16 +119,16 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         message: "School registered successfully",
-        school: { id: schoolId, name: schoolName },
-        admin: { id: userId, name: adminName, email },
+        school: { id: schoolId.toString(), name: schoolName },
+        admin: { id: userId.toString(), name: adminName, email },
         token,
         user: {
-          id: userId,
+          id: userId.toString(),
           name: adminName,
           fullName: adminName,
           email,
           role: "ADMIN",
-          schoolId,
+          schoolId: schoolId.toString(),
         },
       },
       { status: 201 }

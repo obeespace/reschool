@@ -1,9 +1,11 @@
 import bcrypt from "bcryptjs";
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
+import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { parentWardLinks, students, users } from "@/app/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import ParentWardLink from "@/app/models/ParentWardLink";
+import Student from "@/app/models/Students";
+import User from "@/app/models/User";
+import connectDB from "@/app/utils/db";
 
 type Role = "ADMIN" | "TEACHER" | "PARENT";
 
@@ -21,10 +23,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
+    await connectDB();
+
+    if (!mongoose.isValidObjectId(admin.schoolId)) {
+      return NextResponse.json({ error: "Invalid school context" }, { status: 400 });
     }
+
+    const schoolObjectId = new mongoose.Types.ObjectId(admin.schoolId);
 
     const body = await req.json();
     const fullName = String(body?.fullName || "").trim();
@@ -45,64 +50,58 @@ export async function POST(req: Request) {
       );
     }
 
-    const existing = await d1
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.schoolId, admin.schoolId), eq(users.email, email)))
-      .limit(1);
+    const existing = await User.findOne({ schoolId: schoolObjectId, email }).select("_id").lean();
 
-    if (existing.length > 0) {
+    if (existing) {
       return NextResponse.json({ error: "User with this email already exists" }, { status: 409 });
     }
 
-    const now = new Date();
-    const userId = crypto.randomUUID();
+    const userId = new mongoose.Types.ObjectId();
     const passwordHash = await bcrypt.hash(password, 10);
 
     if (role === "PARENT" && wardIds.length > 0) {
-      const studentRows = await d1
-        .select({ id: students.id })
-        .from(students)
-        .where(and(eq(students.schoolId, admin.schoolId), inArray(students.id, wardIds)));
+      const validWardObjectIds = wardIds.filter((id: string) => mongoose.isValidObjectId(id));
+      if (validWardObjectIds.length !== wardIds.length) {
+        return NextResponse.json({ error: "One or more ward IDs are invalid" }, { status: 400 });
+      }
+
+      const studentRows = await Student.find({
+        _id: { $in: validWardObjectIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
+        schoolId: schoolObjectId,
+      })
+        .select("_id")
+        .lean();
 
       if (studentRows.length !== wardIds.length) {
         return NextResponse.json({ error: "One or more ward IDs are invalid" }, { status: 400 });
       }
     }
 
-    await d1.transaction(async (tx) => {
-      await tx.insert(users).values({
-        id: userId,
-        schoolId: admin.schoolId,
-        name: fullName,
-        email,
-        passwordHash,
-        role,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      if (role === "PARENT" && wardIds.length > 0) {
-        for (let index = 0; index < wardIds.length; index += 1) {
-          const studentId = wardIds[index];
-          await tx.insert(parentWardLinks).values({
-            id: crypto.randomUUID(),
-            schoolId: admin.schoolId,
-            parentId: userId,
-            studentId,
-            relationship: "GUARDIAN",
-            isPrimary: index === 0,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-      }
+    await User.create({
+      _id: userId,
+      schoolId: schoolObjectId,
+      fullName,
+      email,
+      passwordHash,
+      role,
+      isActive: true,
     });
+
+    if (role === "PARENT" && wardIds.length > 0) {
+      const links = wardIds.map((studentId: string, index: number) => ({
+        schoolId: schoolObjectId,
+        parentId: userId,
+        studentId: new mongoose.Types.ObjectId(studentId),
+        relationship: "GUARDIAN",
+        isPrimary: index === 0,
+      }));
+      await ParentWardLink.insertMany(links, { ordered: true });
+    }
 
     return NextResponse.json({
       message: "User created successfully",
       user: {
-        id: userId,
+        id: userId.toString(),
         fullName,
         email,
         role,

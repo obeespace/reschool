@@ -1,9 +1,9 @@
 import bcrypt from "bcryptjs";
 import { verifyToken, type ITokenPayload } from "@/app/utils/auth";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import mongoose from "mongoose";
+import User from "@/app/models/User";
+import connectDB from "@/app/utils/db";
 
 export async function PUT(req: Request) {
   try {
@@ -14,10 +14,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
 
     const body = await req.json();
     const oldPassword = String(body?.oldPassword || "");
@@ -30,13 +27,19 @@ export async function PUT(req: Request) {
       );
     }
 
-    const rows = await d1
-      .select({ id: users.id, passwordHash: users.passwordHash })
-      .from(users)
-      .where(and(eq(users.id, user.userId), eq(users.schoolId, user.schoolId)))
-      .limit(1);
+    if (!mongoose.isValidObjectId(user.userId)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    const record = rows[0];
+    const record = await User.findOne({
+      _id: new mongoose.Types.ObjectId(user.userId),
+      schoolId: mongoose.isValidObjectId(user.schoolId)
+        ? new mongoose.Types.ObjectId(user.schoolId)
+        : user.schoolId,
+    })
+      .select("_id passwordHash")
+      .lean();
+
     if (!record) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -46,13 +49,8 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 });
     }
 
-    const now = new Date();
     const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    await d1
-      .update(users)
-      .set({ passwordHash, updatedAt: now })
-      .where(eq(users.id, user.userId));
+    await User.updateOne({ _id: record._id }, { $set: { passwordHash } });
 
     return NextResponse.json({ message: "Password changed successfully" });
   } catch (error: unknown) {

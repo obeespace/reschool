@@ -1,9 +1,9 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import mongoose from "mongoose";
+import User from "@/app/models/User";
+import connectDB from "@/app/utils/db";
 
 type ResetTokenPayload = {
   userId: string;
@@ -15,10 +15,7 @@ type ResetTokenPayload = {
 
 export async function POST(req: Request) {
   try {
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
 
     const body = await req.json().catch(() => ({}));
     const token = String(body?.token || "").trim();
@@ -44,21 +41,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid reset token" }, { status: 400 });
     }
 
-    const userRows = await d1
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.id, payload.userId), eq(users.schoolId, payload.schoolId)))
-      .limit(1);
+    if (!mongoose.isValidObjectId(payload.userId)) {
+      return NextResponse.json({ error: "Invalid reset token" }, { status: 400 });
+    }
 
-    if (!userRows[0]) {
+    const user = await User.findOne({
+      _id: new mongoose.Types.ObjectId(payload.userId),
+      schoolId: mongoose.isValidObjectId(payload.schoolId)
+        ? new mongoose.Types.ObjectId(payload.schoolId)
+        : payload.schoolId,
+    })
+      .select("_id")
+      .lean();
+
+    if (!user) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    await d1
-      .update(users)
-      .set({ passwordHash, updatedAt: new Date() })
-      .where(eq(users.id, payload.userId));
+    await User.updateOne({ _id: user._id }, { $set: { passwordHash } });
 
     return NextResponse.json({ message: "Password reset successfully" });
   } catch (error: unknown) {

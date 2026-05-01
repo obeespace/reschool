@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { users } from "@/app/db/schema";
-import { and, eq } from "drizzle-orm";
+import mongoose from "mongoose";
+import User from "@/app/models/User";
+import connectDB from "@/app/utils/db";
 
 type ResetTokenPayload = {
   userId: string;
@@ -12,10 +12,7 @@ type ResetTokenPayload = {
 
 export async function POST(req: Request) {
   try {
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json({ error: "D1 database not configured" }, { status: 503 });
-    }
+    await connectDB();
 
     const body = await req.json().catch(() => ({}));
     const email = String(body?.email || "").trim().toLowerCase();
@@ -30,21 +27,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
-    const matched = schoolId
-      ? await d1
-          .select({ id: users.id, schoolId: users.schoolId })
-          .from(users)
-          .where(and(eq(users.email, email), eq(users.schoolId, schoolId)))
-          .limit(1)
-      : await d1.select({ id: users.id, schoolId: users.schoolId }).from(users).where(eq(users.email, email)).limit(1);
+    const query: { email: string; schoolId?: mongoose.Types.ObjectId } = { email };
+    if (schoolId && mongoose.isValidObjectId(schoolId)) {
+      query.schoolId = new mongoose.Types.ObjectId(schoolId);
+    }
 
-    if (!matched[0]) {
+    const matched = await User.findOne(query).select("_id schoolId").lean();
+
+    if (!matched) {
       return NextResponse.json({ message: "If the account exists, a reset link was sent." });
     }
 
     const payload: ResetTokenPayload = {
-      userId: matched[0].id,
-      schoolId: matched[0].schoolId,
+      userId: String(matched._id),
+      schoolId: String(matched.schoolId || ""),
       purpose: "password_reset",
     };
 

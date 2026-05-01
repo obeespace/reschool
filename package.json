@@ -17,6 +17,7 @@
     "drizzle-orm": "^0.44.6",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.563.0",
+    "mongoose": "^9.6.1",
     "next": "15.5.15",
     "pg": "^8.13.3",
     "pnpm": "^10.27.0",
