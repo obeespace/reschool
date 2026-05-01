@@ -81,16 +81,28 @@ function resolveLocalClient(): D1Client | null {
   }
 }
 
+function resolveTursoClient(): D1Client | null {
+  const url = process.env.TURSO_DATABASE_URL?.trim();
+  const authToken = process.env.TURSO_AUTH_TOKEN?.trim();
+  if (!url) return null;
+  return createLocalLibsqlClient({ url, authToken });
+}
+
 export function getD1Client(): D1Client {
   const directDb = resolveD1Database();
   if (directDb) {
     return createD1Client(directDb);
   }
 
+  const tursoClient = resolveTursoClient();
+  if (tursoClient) {
+    return tursoClient;
+  }
+
   const localClient = resolveLocalClient();
   if (!localClient) {
     throw new Error(
-      "D1 database binding not configured. In local dev, run `pnpm db:migrate:local` and set LOCAL_D1_SQLITE_PATH if auto-detection fails."
+      "D1 database binding not configured. Set TURSO_DATABASE_URL (and optionally TURSO_AUTH_TOKEN) for Vercel, or run `pnpm db:migrate:local` for local dev."
     );
   }
 
