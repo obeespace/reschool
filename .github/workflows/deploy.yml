@@ -26,6 +26,8 @@ jobs:
 
       - name: Build for Cloudflare
         run: pnpm run build:cf
+        env:
+          CLOUDFLARE_BUILD: "1"
 
       - name: Deploy to Cloudflare Workers
         run: pnpm exec wrangler deploy
