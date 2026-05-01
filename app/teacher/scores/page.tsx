@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, Button, Select, LoadingSpinner } from "@/app/components/UIComponents";
+
+type ArchiveYear = { id: string; name: string; isActive: boolean };
+type ArchiveTerm = {
+  id: string;
+  termNumber: number;
+  academicYearId: string;
+  academicYearName: string;
+  isActive: boolean;
+};
+
+const TERM_NAMES = ["", "First", "Second", "Third"];
 
 interface BulkRow {
   studentId: string;
@@ -21,16 +32,36 @@ export default function TeacherScores() {
   const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
   const [dailyMarks, setDailyMarks] = useState<any[]>([]);
   const [academicScores, setAcademicScores] = useState<any[]>([]);
-  const [academicYear, setAcademicYear] = useState<any>(null);
   const [isSheetLoading, setIsSheetLoading] = useState(false);
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [isAcademicSheetLoading, setIsAcademicSheetLoading] = useState(false);
   const [isSavingAcademic, setIsSavingAcademic] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  // Archive selectors
+  const [archiveYears, setArchiveYears] = useState<ArchiveYear[]>([]);
+  const [archiveTerms, setArchiveTerms] = useState<ArchiveTerm[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [selectedTermId, setSelectedTermId] = useState("");
+  const [activeTermId, setActiveTermId] = useState("");
+
+  const isArchiveMode = !!activeTermId && !!selectedTermId && selectedTermId !== activeTermId;
+
+  const filteredTerms = useMemo(
+    () => archiveTerms.filter((t) => !selectedSessionId || t.academicYearId === selectedSessionId),
+    [archiveTerms, selectedSessionId]
+  );
+
+  const selectedTermLabel = useMemo(() => {
+    const t = archiveTerms.find((t) => t.id === selectedTermId);
+    if (!t) return "";
+    return `${TERM_NAMES[t.termNumber] || "Term " + t.termNumber} Term — ${t.academicYearName}`;
+  }, [archiveTerms, selectedTermId]);
 
   const [bulkForm, setBulkForm] = useState({
     classId: "",
     subjectId: "",
-    type: "classwork",
+    type: "CLASSWORK",
     maxScore: "10",
   });
 
@@ -41,59 +72,10 @@ export default function TeacherScores() {
   });
   const [academicRows, setAcademicRows] = useState<BulkRow[]>([]);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-
-    fetchData();
-  }, [router]);
-
-  const fetchData = async () => {
+  const fetchDailyMarks = useCallback(async (termId: string) => {
     try {
       const token = localStorage.getItem("token");
-
-      const yearRes = await fetch("/api/academic-years/active", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (yearRes.ok) {
-        const data = await yearRes.json();
-        setAcademicYear(data.academicYear);
-        if (data.academicYear) {
-          fetchDailyMarks(data.academicYear._id);
-          fetchAcademicScores();
-        }
-      }
-
-      const classesRes = await fetch("/api/classes/list", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (classesRes.ok) {
-        const data = await classesRes.json();
-        setClasses(data.classes || []);
-      }
-
-      const profileRes = await fetch("/api/teachers/create", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (profileRes.ok) {
-        const data = await profileRes.json();
-        setTeacherAssignments(data.profile?.subjectsAndClasses || []);
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error("Failed to load data");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchDailyMarks = async (academicYearId: string) => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`/api/scores/daily-marks/list?academicYearId=${academicYearId}`, {
+      const response = await fetch(`/api/scores/daily-marks/list?termId=${termId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -104,13 +86,13 @@ export default function TeacherScores() {
     } catch (error) {
       console.error("Error fetching daily marks:", error);
     }
-  };
+  }, []);
 
-  const fetchAcademicScores = async () => {
+  const fetchAcademicScores = useCallback(async (termId: string) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
-      const response = await fetch("/api/scores/view", {
+      const response = await fetch(`/api/scores/view?termId=${termId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -121,7 +103,62 @@ export default function TeacherScores() {
     } catch (error) {
       console.error("Error fetching academic scores:", error);
     }
-  };
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) { router.push("/login"); return; }
+
+      const [archiveRes, classesRes, profileRes] = await Promise.all([
+        fetch("/api/records/archive-options", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/classes/list", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/teachers/create", { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+
+      if (archiveRes.ok) {
+        const data = await archiveRes.json();
+        setArchiveYears(data.academicYears || []);
+        setArchiveTerms(data.terms || []);
+        if (data.activeAcademicYearId) setSelectedSessionId(data.activeAcademicYearId);
+        if (data.activeTermId) {
+          setActiveTermId(data.activeTermId);
+          setSelectedTermId(data.activeTermId);
+          fetchDailyMarks(data.activeTermId);
+          fetchAcademicScores(data.activeTermId);
+        }
+      }
+
+      if (classesRes.ok) {
+        const data = await classesRes.json();
+        setClasses(data.classes || []);
+      }
+
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        setTeacherAssignments(data.profile?.subjectsAndClasses || []);
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      toast.error("Failed to load data");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [router, fetchDailyMarks, fetchAcademicScores]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Refetch when selected term changes after initial load
+  useEffect(() => {
+    if (!selectedTermId) return;
+    if (!initialized) { setInitialized(true); return; }
+    fetchDailyMarks(selectedTermId);
+    fetchAcademicScores(selectedTermId);
+    setBulkRows([]);
+    setAcademicRows([]);
+  }, [selectedTermId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const allowedClassIds = useMemo(() => {
     const ids = new Set<string>();
@@ -188,13 +225,14 @@ export default function TeacherScores() {
   };
 
   const loadBulkSheet = async () => {
+    if (isArchiveMode) return;
     if (!bulkForm.classId || !bulkForm.subjectId) {
       toast.error("Please select class and subject first");
       return;
     }
 
-    if (!academicYear?._id) {
-      toast.error("No active academic year found");
+    if (!selectedTermId) {
+      toast.error("No active term found");
       return;
     }
 
@@ -204,7 +242,7 @@ export default function TeacherScores() {
       const students = await fetchStudentsByClass(bulkForm.classId);
 
       const marksRes = await fetch(
-        `/api/scores/daily-marks/list?academicYearId=${academicYear._id}&classId=${bulkForm.classId}&subjectId=${bulkForm.subjectId}&type=${bulkForm.type}`,
+        `/api/scores/daily-marks/list?termId=${selectedTermId}&classId=${bulkForm.classId}&subjectId=${bulkForm.subjectId}&assessmentType=${bulkForm.type}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -216,9 +254,9 @@ export default function TeacherScores() {
 
       const marksByStudent = new Map<string, any>();
       existingMarks.forEach((mark: any) => {
-        if (mark.studentId?._id) {
-          marksByStudent.set(mark.studentId._id.toString(), mark);
-        }
+        // list API returns studentId as string (populated or raw)
+        const sid = mark.studentId?.toString?.() || (typeof mark.studentId === "string" ? mark.studentId : null);
+        if (sid) marksByStudent.set(sid, mark);
       });
 
       const rows: BulkRow[] = students.map((student: any) => {
@@ -241,8 +279,13 @@ export default function TeacherScores() {
   };
 
   const loadAcademicSheet = async () => {
+    if (isArchiveMode) return;
     if (!academicForm.classId || !academicForm.subjectId) {
       toast.error("Please select class and subject first");
+      return;
+    }
+    if (!selectedTermId) {
+      toast.error("No active term found");
       return;
     }
 
@@ -252,7 +295,7 @@ export default function TeacherScores() {
       const students = await fetchStudentsByClass(academicForm.classId);
 
       const scoresRes = await fetch(
-        `/api/scores/view?classId=${academicForm.classId}&subjectId=${academicForm.subjectId}`,
+        `/api/scores/view?termId=${selectedTermId}&classId=${academicForm.classId}&subjectId=${academicForm.subjectId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -264,8 +307,8 @@ export default function TeacherScores() {
 
       const scoreByStudent = new Map<string, any>();
       existingScores.forEach((row: any) => {
-        const sid = row?.studentId?._id;
-        if (sid) scoreByStudent.set(String(sid), row);
+        const sid = String(row.studentId || "");
+        if (sid) scoreByStudent.set(sid, row);
       });
 
       setAcademicRows(
@@ -274,7 +317,7 @@ export default function TeacherScores() {
           return {
             studentId: String(student._id),
             studentName: student.fullName,
-            score: existing?.score != null ? String(existing.score) : "",
+            score: existing?.total != null ? String(existing.total) : "",
             notes: "",
           };
         })
@@ -309,20 +352,14 @@ export default function TeacherScores() {
   };
 
   const handleSaveBulkMarks = async () => {
-    if (!academicYear?._id) {
-      toast.error("No active academic year found");
+    if (isArchiveMode) return;
+    if (!selectedTermId) {
+      toast.error("No active term found");
       return;
     }
 
-    const entries = bulkRows
-      .filter((row) => row.score !== "")
-      .map((row) => ({
-        studentId: row.studentId,
-        score: Number(row.score),
-        notes: row.notes,
-      }));
-
-    if (entries.length === 0) {
+    const validRows = bulkRows.filter((row) => row.score !== "");
+    if (validRows.length === 0) {
       toast.error("Enter at least one score to save");
       return;
     }
@@ -337,12 +374,14 @@ export default function TeacherScores() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          classId: bulkForm.classId,
-          subjectId: bulkForm.subjectId,
-          type: bulkForm.type,
-          maxScore: Number(bulkForm.maxScore) || 10,
-          academicYearId: academicYear._id,
-          entries,
+          entries: validRows.map((row) => ({
+            studentId: row.studentId,
+            classId: bulkForm.classId,
+            subjectId: bulkForm.subjectId,
+            score: Number(row.score),
+            assessmentType: bulkForm.type,
+            notes: row.notes,
+          })),
         }),
       });
 
@@ -353,8 +392,8 @@ export default function TeacherScores() {
         return;
       }
 
-      toast.success(`Saved ${data.summary?.totalProcessed || entries.length} marks`);
-      fetchDailyMarks(academicYear._id);
+      toast.success(`Saved ${(data.upserted ?? 0) + (data.modified ?? 0) || validRows.length} marks`);
+      fetchDailyMarks(selectedTermId);
       loadBulkSheet();
     } catch (error) {
       console.error("Error saving bulk marks:", error);
@@ -365,47 +404,39 @@ export default function TeacherScores() {
   };
 
   const handleSaveAcademicScores = async () => {
+    if (isArchiveMode) return;
     if (!academicForm.classId || !academicForm.subjectId) {
       toast.error("Class and subject are required");
       return;
     }
 
-    const entries = academicRows
-      .filter((row) => row.score !== "")
-      .map((row) => ({
-        studentId: row.studentId,
-        score: Number(row.score),
-      }));
+    const validRows = academicRows.filter((row) => row.score !== "");
 
-    if (entries.length === 0) {
+    if (validRows.length === 0) {
       toast.error("Enter at least one score to save");
       return;
     }
 
     setIsSavingAcademic(true);
+    let saved = 0;
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("/api/scores/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          classId: academicForm.classId,
-          subjectId: academicForm.subjectId,
-          entries,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        toast.error(data.error || "Failed to upload academic scores");
-        return;
+      for (const row of validRows) {
+        const res = await fetch("/api/scores/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            studentId: row.studentId,
+            subjectId: academicForm.subjectId,
+            classId: academicForm.classId,
+            score: Number(row.score),
+          }),
+        });
+        if (res.ok) saved++;
       }
 
-      toast.success(`Saved ${data.summary?.totalProcessed || entries.length} academic scores`);
-      await fetchAcademicScores();
+      toast.success(`Saved ${saved} academic scores`);
+      await fetchAcademicScores(selectedTermId);
       await loadAcademicSheet();
     } catch (error) {
       console.error("Error uploading academic scores:", error);
@@ -429,6 +460,42 @@ export default function TeacherScores() {
         title="Upload Scores"
         description="Enter and edit class scores in bulk"
       />
+
+      {/* Archive selectors */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Academic Session"
+            value={selectedSessionId}
+            onChange={(e) => {
+              setSelectedSessionId(e.target.value);
+              const firstTerm = archiveTerms.find((t) => t.academicYearId === e.target.value);
+              if (firstTerm) setSelectedTermId(firstTerm.id);
+            }}
+            options={archiveYears.map((y) => ({
+              value: y.id,
+              label: y.name + (y.isActive ? " (Current)" : ""),
+            }))}
+          />
+          <Select
+            label="Term"
+            value={selectedTermId}
+            onChange={(e) => setSelectedTermId(e.target.value)}
+            options={filteredTerms.map((t) => ({
+              value: t.id,
+              label: `${TERM_NAMES[t.termNumber] || "Term " + t.termNumber} Term${t.isActive ? " (Active)" : ""}`,
+            }))}
+          />
+        </div>
+      </div>
+
+      {/* Archive mode banner */}
+      {isArchiveMode && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 mb-6 flex items-center gap-3">
+          <span className="text-amber-600 font-semibold text-sm">📁 Viewing archived records</span>
+          <span className="text-amber-700 text-sm">— {selectedTermLabel}. Editing is disabled for past terms.</span>
+        </div>
+      )}
 
       <div className="mb-6 border-b border-gray-200">
         <div className="flex gap-8">
@@ -457,20 +524,22 @@ export default function TeacherScores() {
 
       {activeTab === "daily" && (
         <div className="space-y-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
-              <strong>Bulk Entry:</strong> Select a class and subject, load the class sheet, fill scores/notes for all students, and save once. Existing records are prefilled for editing.
-            </p>
-          </div>
+          {!isArchiveMode && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Bulk Entry:</strong> Select a class and subject, load the class sheet, fill scores/notes for all students, and save once. Existing records are prefilled for editing.
+                </p>
+              </div>
 
-          <div className="bg-white rounded-lg shadow p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Select
-                label="Class"
-                value={bulkForm.classId}
-                onChange={(e) => {
-                  setBulkForm((prev) => ({ ...prev, classId: e.target.value, subjectId: "" }));
-                  setBulkRows([]);
+              <div className="bg-white rounded-lg shadow p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Select
+                    label="Class"
+                    value={bulkForm.classId}
+                    onChange={(e) => {
+                      setBulkForm((prev) => ({ ...prev, classId: e.target.value, subjectId: "" }));
+                      setBulkRows([]);
                 }}
                 options={[
                   { value: "", label: "Select Class" },
@@ -508,10 +577,9 @@ export default function TeacherScores() {
                 }}
                 options={[
                   { value: "classwork", label: "Classwork" },
-                  { value: "homework", label: "Homework" },
-                  { value: "test", label: "Test" },
-                  { value: "exam", label: "Exam" },
-                  { value: "extracurricular", label: "Extracurricular" },
+                  { value: "HOMEWORK", label: "Homework" },
+                  { value: "EVALUATION", label: "Test / Evaluation" },
+                  { value: "EXAM", label: "Exam" },
                 ]}
                 required
               />
@@ -538,62 +606,69 @@ export default function TeacherScores() {
             </div>
           </div>
 
-          {bulkRows.length > 0 && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="px-6 py-4 border-b flex justify-between items-center">
-                <h3 className="font-semibold text-gray-900">Student Score Sheet</h3>
-                <Button onClick={handleSaveBulkMarks} disabled={isSavingBulk}>
-                  {isSavingBulk ? "Saving..." : "Save All Marks"}
-                </Button>
-              </div>
+              {bulkRows.length > 0 && (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <div className="px-6 py-4 border-b flex justify-between items-center">
+                    <h3 className="font-semibold text-gray-900">Student Score Sheet</h3>
+                    <Button onClick={handleSaveBulkMarks} disabled={isSavingBulk}>
+                      {isSavingBulk ? "Saving..." : "Save All Marks"}
+                    </Button>
+                  </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-180">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Notes / Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {bulkRows.map((row, index) => (
-                      <tr key={row.studentId} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.studentName}</td>
-                        <td className="px-6 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={row.score}
-                            onChange={(e) => updateBulkRow(index, "score", e.target.value)}
-                            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            placeholder="0-100"
-                          />
-                        </td>
-                        <td className="px-6 py-3">
-                          <input
-                            type="text"
-                            value={row.notes}
-                            onChange={(e) => updateBulkRow(index, "notes", e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            placeholder="Optional comment"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-180">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Notes / Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {bulkRows.map((row, index) => (
+                          <tr key={row.studentId} className="hover:bg-gray-50">
+                            <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.studentName}</td>
+                            <td className="px-6 py-3">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={row.score}
+                                onChange={(e) => updateBulkRow(index, "score", e.target.value)}
+                                className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                placeholder="0-100"
+                              />
+                            </td>
+                            <td className="px-6 py-3">
+                              <input
+                                type="text"
+                                value={row.notes}
+                                onChange={(e) => updateBulkRow(index, "notes", e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                placeholder="Optional comment"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <h3 className="font-semibold text-gray-900">Recent Daily Marks</h3>
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">
+                {isArchiveMode ? `Daily Marks — ${selectedTermLabel}` : "Recent Daily Marks"}
+              </h3>
+              {isArchiveMode && (
+                <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-medium">Read-only</span>
+              )}
             </div>
             {dailyMarks.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">No daily marks recorded yet</div>
+              <div className="p-8 text-center text-gray-500">No daily marks recorded for this term</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -608,17 +683,19 @@ export default function TeacherScores() {
                   </thead>
                   <tbody className="divide-y">
                     {dailyMarks.map((mark: any, index: number) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm">{mark.studentId?.fullName}</td>
-                        <td className="px-6 py-3 text-sm">{mark.subjectId?.name || mark.subjectName || mark.subjectId}</td>
+                      <tr key={mark._id || index} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 text-sm">{mark.studentName || mark.studentId?.fullName}</td>
+                        <td className="px-6 py-3 text-sm">{mark.subjectName || mark.subjectId?.name}</td>
                         <td className="px-6 py-3 text-sm">
                           <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-medium capitalize">
-                            {mark.type}
+                            {(mark.assessmentType || mark.type || "").toLowerCase()}
                           </span>
                         </td>
-                        <td className="px-6 py-3 text-sm font-semibold">{mark.score}/{mark.maxScore}</td>
+                        <td className="px-6 py-3 text-sm font-semibold">{mark.score}</td>
                         <td className="px-6 py-3 text-sm text-gray-600">
-                          {mark.recordedDate ? new Date(mark.recordedDate).toLocaleDateString() : "N/A"}
+                          {(mark.assessmentDate || mark.recordedDate)
+                            ? new Date(mark.assessmentDate || mark.recordedDate).toLocaleDateString()
+                            : "N/A"}
                         </td>
                       </tr>
                     ))}
@@ -632,20 +709,22 @@ export default function TeacherScores() {
 
       {activeTab === "academic" && (
         <div className="space-y-6">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-sm text-green-800">
-              <strong>Academic Records:</strong> These are permanent records of tests and exams.
-              Used for official transcripts and academic history.
-            </p>
-          </div>
+          {!isArchiveMode && (
+            <>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-sm text-green-800">
+                  <strong>Academic Records:</strong> These are permanent records of tests and exams.
+                  Used for official transcripts and academic history.
+                </p>
+              </div>
 
-          <div className="bg-white rounded-lg shadow p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select
-                label="Class"
-                value={academicForm.classId}
-                onChange={(e) => {
-                  setAcademicForm((prev) => ({ ...prev, classId: e.target.value, subjectId: "" }));
+              <div className="bg-white rounded-lg shadow p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Select
+                    label="Class"
+                    value={academicForm.classId}
+                    onChange={(e) => {
+                      setAcademicForm((prev) => ({ ...prev, classId: e.target.value, subjectId: "" }));
                   setAcademicRows([]);
                 }}
                 options={[
@@ -686,52 +765,59 @@ export default function TeacherScores() {
             </div>
           </div>
 
-          {academicRows.length > 0 && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="px-6 py-4 border-b flex justify-between items-center">
-                <h3 className="font-semibold text-gray-900">Academic Score Sheet</h3>
-                <Button onClick={handleSaveAcademicScores} disabled={isSavingAcademic}>
-                  {isSavingAcademic ? "Saving..." : "Save Academic Scores"}
-                </Button>
-              </div>
+              {academicRows.length > 0 && (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <div className="px-6 py-4 border-b flex justify-between items-center">
+                    <h3 className="font-semibold text-gray-900">Academic Score Sheet</h3>
+                    <Button onClick={handleSaveAcademicScores} disabled={isSavingAcademic}>
+                      {isSavingAcademic ? "Saving..." : "Save Academic Scores"}
+                    </Button>
+                  </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-160">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {academicRows.map((row, index) => (
-                      <tr key={row.studentId} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.studentName}</td>
-                        <td className="px-6 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={row.score}
-                            onChange={(e) => updateAcademicRow(index, "score", e.target.value)}
-                            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                            placeholder="0-100"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-160">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
+                          <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Total Score</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {academicRows.map((row, index) => (
+                          <tr key={row.studentId} className="hover:bg-gray-50">
+                            <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.studentName}</td>
+                            <td className="px-6 py-3">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={row.score}
+                                onChange={(e) => updateAcademicRow(index, "score", e.target.value)}
+                                className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                placeholder="0-100"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <h3 className="font-semibold text-gray-900">Recent Academic Records</h3>
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">
+                {isArchiveMode ? `Academic Records — ${selectedTermLabel}` : "Recent Academic Records"}
+              </h3>
+              {isArchiveMode && (
+                <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-medium">Read-only</span>
+              )}
             </div>
             {academicScores.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">No academic records uploaded yet</div>
+              <div className="p-8 text-center text-gray-500">No academic records for this term</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -739,15 +825,25 @@ export default function TeacherScores() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Student</th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Subject</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600">Score</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Classwork</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Homework</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Test</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Exam</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Total</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600">Grade</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {academicScores.map((score: any, index: number) => (
-                      <tr key={score.id || index} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 text-sm">{score.studentId?.fullName || "N/A"}</td>
-                        <td className="px-6 py-3 text-sm">{score.subjectId?.name || "N/A"}</td>
-                        <td className="px-6 py-3 text-sm font-semibold">{score.score}</td>
+                      <tr key={score._id || index} className="hover:bg-gray-50">
+                        <td className="px-6 py-3 text-sm">{score.studentName || "N/A"}</td>
+                        <td className="px-6 py-3 text-sm">{score.subjectName || score.subjectId?.name || "N/A"}</td>
+                        <td className="px-6 py-3 text-center text-sm">{score.classwork ?? "-"}</td>
+                        <td className="px-6 py-3 text-center text-sm">{score.homework ?? "-"}</td>
+                        <td className="px-6 py-3 text-center text-sm">{score.test ?? "-"}</td>
+                        <td className="px-6 py-3 text-center text-sm">{score.exam ?? "-"}</td>
+                        <td className="px-6 py-3 text-center text-sm font-bold">{score.total ?? "-"}</td>
+                        <td className="px-6 py-3 text-center text-sm font-semibold text-indigo-600">{score.grade ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>

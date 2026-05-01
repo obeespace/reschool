@@ -1,10 +1,20 @@
 "use client";
 
-import { Suspense } from "react";
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, LoadingSpinner, Select } from "@/app/components/UIComponents";
+
+type ArchiveYear = { id: string; name: string; isActive: boolean };
+type ArchiveTerm = {
+  id: string;
+  termNumber: number;
+  academicYearId: string;
+  academicYearName: string;
+  isActive: boolean;
+};
+
+const TERM_NAMES = ["", "First", "Second", "Third"];
 
 function ParentScoresContent() {
   const router = useRouter();
@@ -13,7 +23,55 @@ function ParentScoresContent() {
   const [wards, setWards] = useState<any[]>([]);
   const [scores, setScores] = useState<any[]>([]);
   const [selectedWard, setSelectedWard] = useState("");
-  const [selectedTerm, setSelectedTerm] = useState("1");
+  const [archiveYears, setArchiveYears] = useState<ArchiveYear[]>([]);
+  const [archiveTerms, setArchiveTerms] = useState<ArchiveTerm[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [selectedTermId, setSelectedTermId] = useState("");
+
+  const filteredTerms = useMemo(
+    () => archiveTerms.filter((t) => !selectedSessionId || t.academicYearId === selectedSessionId),
+    [archiveTerms, selectedSessionId]
+  );
+
+  const selectedTermLabel = useMemo(() => {
+    const t = archiveTerms.find((t) => t.id === selectedTermId);
+    if (!t) return "";
+    return `${TERM_NAMES[t.termNumber] || "Term " + t.termNumber} Term — ${t.academicYearName}`;
+  }, [archiveTerms, selectedTermId]);
+
+  const fetchScores = useCallback(async (wardId: string, termId: string) => {
+    if (!wardId || !termId) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/scores/view?studentId=${wardId}&termId=${termId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setScores(data.scores || []);
+      }
+    } catch (error) {
+      console.error("Error fetching scores:", error);
+    }
+  }, []);
+
+  const fetchWards = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/parents/ward-scores", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const wardList = (data.wards || []).map((w: any) => ({ _id: w.studentId, fullName: w.fullName }));
+        setWards(wardList);
+        return wardList;
+      }
+    } catch (error) {
+      console.error("Error fetching wards:", error);
+    }
+    return [];
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -22,42 +80,45 @@ function ParentScoresContent() {
       return;
     }
 
-    const studentParam = searchParams.get("student");
-    if (studentParam) {
-      setSelectedWard(studentParam);
-    }
+    const init = async () => {
+      const studentParam = searchParams.get("student");
 
-    fetchWardScores();
-  }, [router, searchParams]);
+      const [archiveRes, wardList] = await Promise.all([
+        fetch("/api/records/archive-options", { headers: { Authorization: `Bearer ${token}` } }),
+        fetchWards(),
+      ]);
 
-  const fetchWardScores = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/parents/ward-scores", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      let activeTermId = "";
+      let activeSessionId = "";
 
-      if (response.ok) {
-        const data = await response.json();
-        setWards(data.students || []);
-        setScores(data.scores || []);
-        
-        if (!selectedWard && data.students.length > 0) {
-          setSelectedWard(data.students[0]._id);
-        }
+      if (archiveRes.ok) {
+        const data = await archiveRes.json();
+        setArchiveYears(data.academicYears || []);
+        setArchiveTerms(data.terms || []);
+        if (data.activeAcademicYearId) { setSelectedSessionId(data.activeAcademicYearId); activeSessionId = data.activeAcademicYearId; }
+        if (data.activeTermId) { setSelectedTermId(data.activeTermId); activeTermId = data.activeTermId; }
       }
-    } catch (error) {
-      console.error("Error fetching scores:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const filteredScores = scores.filter(
-    (score) =>
-      score.studentId._id === selectedWard &&
-      score.term === parseInt(selectedTerm)
-  );
+      const ward = studentParam || (wardList.length > 0 ? wardList[0]._id : "");
+      if (ward) {
+        setSelectedWard(ward);
+        if (activeTermId) fetchScores(ward, activeTermId);
+      }
+
+      setIsLoading(false);
+    };
+
+    init();
+  }, [router, searchParams, fetchWards, fetchScores]);
+
+  // Refetch when ward or term selection changes
+  const [initialized, setInitialized] = useState(false);
+  useEffect(() => {
+    if (!initialized) { setInitialized(true); return; }
+    if (selectedWard && selectedTermId) {
+      fetchScores(selectedWard, selectedTermId);
+    }
+  }, [selectedWard, selectedTermId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const calculateGrade = (total: number) => {
     if (total >= 70) return { grade: "A", color: "text-green-600" };
@@ -68,8 +129,8 @@ function ParentScoresContent() {
   };
 
   const selectedWardData = wards.find((w) => w._id === selectedWard);
-  const totalScores = filteredScores.reduce((sum, s) => sum + s.total, 0);
-  const averageScore = filteredScores.length > 0 ? (totalScores / filteredScores.length).toFixed(2) : "0";
+  const totalScores = scores.reduce((sum, s) => sum + (s.total || 0), 0);
+  const averageScore = scores.length > 0 ? (totalScores / scores.length).toFixed(1) : "0";
 
   if (isLoading) {
     return (
@@ -89,26 +150,39 @@ function ParentScoresContent() {
       <div className="p-6">
         {/* Filters */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
             <Select
               label="Select Ward"
               value={selectedWard}
               onChange={(e) => setSelectedWard(e.target.value)}
               options={wards.map((w) => ({
                 value: w._id,
-                label: `${w.fullName} - ${w.currentClassId?.level} ${w.currentClassId?.arm}`,
+                label: w.fullName,
               }))}
             />
 
             <Select
-              label="Select Term"
-              value={selectedTerm}
-              onChange={(e) => setSelectedTerm(e.target.value)}
-              options={[
-                { value: "1", label: "First Term" },
-                { value: "2", label: "Second Term" },
-                { value: "3", label: "Third Term" },
-              ]}
+              label="Academic Session"
+              value={selectedSessionId}
+              onChange={(e) => {
+                setSelectedSessionId(e.target.value);
+                const firstTerm = archiveTerms.find((t) => t.academicYearId === e.target.value);
+                if (firstTerm) setSelectedTermId(firstTerm.id);
+              }}
+              options={archiveYears.map((y) => ({
+                value: y.id,
+                label: y.name + (y.isActive ? " (Current)" : ""),
+              }))}
+            />
+
+            <Select
+              label="Term"
+              value={selectedTermId}
+              onChange={(e) => setSelectedTermId(e.target.value)}
+              options={filteredTerms.map((t) => ({
+                value: t.id,
+                label: `${TERM_NAMES[t.termNumber] || "Term " + t.termNumber} Term${t.isActive ? " (Active)" : ""}`,
+              }))}
             />
           </div>
         </div>
@@ -121,18 +195,16 @@ function ParentScoresContent() {
                 <div>
                   <div className="text-indigo-200 text-sm">Student Name</div>
                   <div className="text-2xl font-bold mt-1">{selectedWardData.fullName}</div>
-                  <div className="text-indigo-200 text-sm mt-1">
-                    {selectedWardData.currentClassId?.level} {selectedWardData.currentClassId?.arm}
-                  </div>
+                  <div className="text-indigo-200 text-sm mt-1">{selectedTermLabel}</div>
                 </div>
                 <div>
                   <div className="text-indigo-200 text-sm">Total Subjects</div>
-                  <div className="text-4xl font-bold mt-1">{filteredScores.length}</div>
+                  <div className="text-4xl font-bold mt-1">{scores.length}</div>
                 </div>
                 <div>
                   <div className="text-indigo-200 text-sm">Average Score</div>
                   <div className="text-4xl font-bold mt-1">{averageScore}%</div>
-                  <div className={`text-xl font-bold mt-1 ${calculateGrade(parseFloat(averageScore)).color}`}>
+                  <div className={`text-xl font-bold mt-1 ${calculateGrade(parseFloat(averageScore)).color.replace("text-", "text-white/90 text-")}`}>
                     Grade: {calculateGrade(parseFloat(averageScore)).grade}
                   </div>
                 </div>
@@ -142,10 +214,10 @@ function ParentScoresContent() {
             {/* Scores Table */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="px-6 py-4 bg-gray-50 border-b">
-                <h2 className="text-xl font-bold">Subject Scores - Term {selectedTerm}</h2>
+                <h2 className="text-xl font-bold">Subject Scores — {selectedTermLabel}</h2>
               </div>
 
-              {filteredScores.length > 0 ? (
+              {scores.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b-2">
@@ -154,22 +226,19 @@ function ParentScoresContent() {
                           Subject
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                          Classwork<br/>(10)
+                          Classwork
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                          Homework<br/>(10)
+                          Homework
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                          Extra<br/>(10)
+                          Test
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                          Test<br/>(30)
+                          Exam
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                          Exam<br/>(60)
-                        </th>
-                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                          Total<br/>(100)
+                          Total
                         </th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                           Grade
@@ -177,18 +246,17 @@ function ParentScoresContent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {filteredScores.map((score) => {
-                        const { grade, color } = calculateGrade(score.total);
+                      {scores.map((score) => {
+                        const { grade, color } = calculateGrade(score.total ?? 0);
                         return (
                           <tr key={score._id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 font-medium">{score.subjectId?.name}</td>
-                            <td className="px-6 py-4 text-center">{score.classwork}</td>
-                            <td className="px-6 py-4 text-center">{score.homework}</td>
-                            <td className="px-6 py-4 text-center">{score.extracurricular}</td>
-                            <td className="px-6 py-4 text-center">{score.test}</td>
-                            <td className="px-6 py-4 text-center font-semibold">{score.exam}</td>
+                            <td className="px-6 py-4 font-medium">{score.subjectName || score.subjectId?.name}</td>
+                            <td className="px-6 py-4 text-center">{score.classwork ?? "-"}</td>
+                            <td className="px-6 py-4 text-center">{score.homework ?? "-"}</td>
+                            <td className="px-6 py-4 text-center">{score.test ?? "-"}</td>
+                            <td className="px-6 py-4 text-center font-semibold">{score.exam ?? "-"}</td>
                             <td className="px-6 py-4 text-center font-bold text-lg">
-                              {score.total}
+                              {score.total ?? "-"}
                             </td>
                             <td className={`px-6 py-4 text-center font-bold text-xl ${color}`}>
                               {grade}
@@ -199,7 +267,7 @@ function ParentScoresContent() {
                     </tbody>
                     <tfoot className="bg-gray-50 border-t-2">
                       <tr>
-                        <td colSpan={6} className="px-6 py-4 font-bold text-right">
+                        <td colSpan={5} className="px-6 py-4 font-bold text-right">
                           Average:
                         </td>
                         <td className="px-6 py-4 text-center font-bold text-xl">
@@ -216,34 +284,34 @@ function ParentScoresContent() {
                 <div className="text-center py-12 text-gray-500">
                   <p className="text-lg font-semibold">No scores available</p>
                   <p className="text-sm mt-2">
-                    Scores for Term {selectedTerm} haven't been uploaded yet.
+                    No scores found for the selected term.
                   </p>
                 </div>
               )}
             </div>
 
             {/* Performance Insights */}
-            {filteredScores.length > 0 && (
+            {scores.length > 0 && (
               <div className="mt-6 bg-blue-50 rounded-lg p-6 border-l-4 border-blue-500">
                 <h3 className="font-semibold text-blue-900 mb-3">Performance Insights</h3>
                 <div className="space-y-2 text-blue-800 text-sm">
                   <p>
                     • Best Subject:{" "}
                     <span className="font-semibold">
-                      {filteredScores.reduce((best, current) => 
-                        current.total > best.total ? current : best
-                      ).subjectId?.name} ({filteredScores.reduce((best, current) => 
-                        current.total > best.total ? current : best
+                      {scores.reduce((best, current) =>
+                        (current.total ?? 0) > (best.total ?? 0) ? current : best
+                      ).subjectName} ({scores.reduce((best, current) =>
+                        (current.total ?? 0) > (best.total ?? 0) ? current : best
                       ).total} marks)
                     </span>
                   </p>
                   <p>
                     • Needs Improvement:{" "}
                     <span className="font-semibold">
-                      {filteredScores.reduce((worst, current) => 
-                        current.total < worst.total ? current : worst
-                      ).subjectId?.name} ({filteredScores.reduce((worst, current) => 
-                        current.total < worst.total ? current : worst
+                      {scores.reduce((worst, current) =>
+                        (current.total ?? 0) < (worst.total ?? 0) ? current : worst
+                      ).subjectName} ({scores.reduce((worst, current) =>
+                        (current.total ?? 0) < (worst.total ?? 0) ? current : worst
                       ).total} marks)
                     </span>
                   </p>
