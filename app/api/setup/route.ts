@@ -3,6 +3,8 @@ import connectDB from "@/app/utils/db";
 import { verifyToken } from "@/app/utils/auth";
 import SchoolSetup from "@/app/models/SchoolSetup";
 import School from "@/app/models/School";
+import AcademicYear from "@/app/models/AcademicYear";
+import Term from "@/app/models/Term";
 
 // GET: Check setup status
 export async function GET(req: NextRequest) {
@@ -74,6 +76,10 @@ export async function POST(req: NextRequest) {
     const {
       schoolName,
       address,
+      sessionYear,
+      sessionStartDate,
+      sessionEndDate,
+      terms,
       classLevels,
       classArms,
       subjects,
@@ -83,6 +89,10 @@ export async function POST(req: NextRequest) {
     // Validate required fields
     if (
       !schoolName ||
+      !sessionYear ||
+      !sessionStartDate ||
+      !sessionEndDate ||
+      !terms?.length ||
       !classLevels?.length ||
       !classArms?.length ||
       !subjects?.length ||
@@ -94,13 +104,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate terms structure
+    if (terms.length !== 3 || !terms.every((t: any) => t.termNumber && t.startDate && t.endDate)) {
+      return NextResponse.json(
+        { error: "All 3 terms must have start and end dates" },
+        { status: 400 }
+      );
+    }
+
     // Check if setup already exists
     let setup = await SchoolSetup.findOne({
       schoolId: payload.schoolId,
     });
 
+    if (setup && setup.isSetupComplete) {
+      return NextResponse.json(
+        { error: "Setup already completed for this school" },
+        { status: 400 }
+      );
+    }
+
+    // Create/Update School record
+    await School.updateOne(
+      { _id: payload.schoolId },
+      {
+        name: schoolName,
+        address: address || undefined,
+      },
+      { upsert: true }
+    );
+
+    // Create AcademicYear
+    const academicYear = await AcademicYear.create({
+      schoolId: payload.schoolId,
+      name: `${sessionYear} Academic Year`,
+      startDate: new Date(sessionStartDate),
+      endDate: new Date(sessionEndDate),
+      isActive: true,
+      term: 1,
+    });
+
+    // Create 3 Term records
+    const createdTerms = await Promise.all(
+      terms.map((t: any) =>
+        Term.create({
+          schoolId: payload.schoolId,
+          academicYearId: academicYear._id,
+          termNumber: t.termNumber,
+          startDate: new Date(t.startDate),
+          endDate: new Date(t.endDate),
+          isActive: t.termNumber === 1, // Mark first term as active
+          isPaid: false,
+          isClosed: false,
+        })
+      )
+    );
+
+    // Create or update SchoolSetup record
     if (!setup) {
-      // Create new setup record
       setup = new SchoolSetup({
         schoolId: payload.schoolId,
         schoolName,
@@ -114,14 +175,6 @@ export async function POST(req: NextRequest) {
         setupCompletedBy: payload.userId,
       });
     } else {
-      // Update existing setup record (only once)
-      if (setup.isSetupComplete) {
-        return NextResponse.json(
-          { error: "Setup already completed for this school" },
-          { status: 400 }
-        );
-      }
-
       setup.schoolName = schoolName;
       setup.address = address;
       setup.classLevels = classLevels;
@@ -135,19 +188,12 @@ export async function POST(req: NextRequest) {
 
     await setup.save();
 
-    // Also update School record with these details
-    await School.updateOne(
-      { _id: payload.schoolId },
-      {
-        name: schoolName,
-        address: address || undefined,
-      }
-    );
-
     return NextResponse.json(
       {
         message: "Setup completed successfully",
         setupData: setup,
+        academicYear,
+        terms: createdTerms,
       },
       { status: 201 }
     );
