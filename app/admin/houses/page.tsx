@@ -1,17 +1,32 @@
 "use client";
 
+"use client";
+
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Trophy, Star, Users } from "lucide-react";
 import DashboardLayout from "@/app/components/Sidebar";
-import { PageHeader, Button, LoadingSpinner, Modal, Input } from "@/app/components/UIComponents";
+import { PageHeader, StatCard, DataTable, Button, LoadingSpinner, Modal, Input, Select } from "@/app/components/UIComponents";
 
 type HouseEntry = { _id: string; houseName: string; category: string; points: number; description: string; createdAt: string };
 type Leaderboard = { house: string; points: number };
 type TermItem = { _id: string; termNumber: number; isActive: boolean };
 type StudentItem = { _id: string; fullName: string; admissionNumber: string; house?: string };
 
-const CATEGORIES = ["SPORTS", "ACADEMIC", "CULTURAL", "GENERAL"];
+const CATEGORIES = [
+  { value: "SPORTS", label: "Sports" },
+  { value: "ACADEMIC", label: "Academic" },
+  { value: "CULTURAL", label: "Cultural" },
+  { value: "GENERAL", label: "General" },
+];
+
+const RANK_STYLES = [
+  { medal: "🥇", bg: "bg-gradient-to-br from-amber-50 to-yellow-50", border: "border-amber-200", text: "text-amber-600", badge: "bg-amber-100 text-amber-700" },
+  { medal: "🥈", bg: "bg-gradient-to-br from-gray-50 to-slate-50", border: "border-gray-200", text: "text-gray-500", badge: "bg-gray-100 text-gray-600" },
+  { medal: "🥉", bg: "bg-gradient-to-br from-orange-50 to-amber-50", border: "border-orange-200", text: "text-orange-600", badge: "bg-orange-100 text-orange-700" },
+  { medal: "", bg: "bg-gray-50", border: "border-gray-100", text: "text-gray-400", badge: "bg-gray-100 text-gray-500" },
+];
 
 export default function AdminHousesPage() {
   const router = useRouter();
@@ -118,8 +133,60 @@ export default function AdminHousesPage() {
     }
   };
 
-  const medalColor = (i: number) => i === 0 ? "text-yellow-500" : i === 1 ? "text-gray-400" : i === 2 ? "text-amber-600" : "text-gray-300";
-  const medal = (i: number) => i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+  const getRankStyle = (i: number) => RANK_STYLES[Math.min(i, 3)];
+
+  const termOptions = terms.map((t) => ({
+    value: t._id,
+    label: `${t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term${t.isActive ? " (Active)" : ""}`,
+  }));
+  const studentOptions = [
+    { value: "", label: "None (team / house award)" },
+    ...students.map((s) => ({ value: s._id, label: `${s.fullName} (${s.admissionNumber})` })),
+  ];
+  const studentSelectOptions = [
+    { value: "", label: "Select student…" },
+    ...students.map((s) => ({ value: s._id, label: `${s.fullName} (${s.admissionNumber})` })),
+  ];
+  const totalPoints = leaderboard.reduce((s, h) => s + h.points, 0);
+
+  const entriesRows = entries.slice(0, 50).map((e) => ({
+    house: e.houseName,
+    category: e.category,
+    points: e.points,
+    description: e.description,
+    date: new Date(e.createdAt).toLocaleDateString("en-GB"),
+  }));
+  const entriesColumns = [
+    { header: "House", accessor: "house", render: (v: string) => <span className="font-semibold text-gray-900">{v}</span> },
+    {
+      header: "Category", accessor: "category",
+      render: (v: string) => (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">{v}</span>
+      ),
+    },
+    {
+      header: "Points", accessor: "points",
+      render: (v: number) => <span className="font-bold text-indigo-600">+{v}</span>,
+    },
+    { header: "Description", accessor: "description" },
+    { header: "Date", accessor: "date", render: (v: string) => <span className="text-gray-500">{v}</span> },
+  ];
+
+  const studentsRows = students.map((s) => ({
+    name: s.fullName,
+    admNo: s.admissionNumber,
+    house: s.house,
+  }));
+  const studentsColumns = [
+    { header: "Student", accessor: "name", render: (v: string) => <span className="font-medium">{v}</span> },
+    { header: "Adm. No", accessor: "admNo", render: (v: string) => <span className="text-gray-500">{v}</span> },
+    {
+      header: "House", accessor: "house",
+      render: (v: string) => v
+        ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">{v}</span>
+        : <span className="text-xs text-gray-400 italic">Unassigned</span>,
+    },
+  ];
 
   if (loading) return <DashboardLayout role="ADMIN"><LoadingSpinner /></DashboardLayout>;
 
@@ -137,106 +204,70 @@ export default function AdminHousesPage() {
       />
 
       <div className="p-6 space-y-6">
-        {/* Term Selector */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
-          <select
-            value={selectedTerm}
-            onChange={(e) => handleTermChange(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {terms.map((t) => (
-              <option key={t._id} value={t._id}>
-                {t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term
-                {t.isActive ? " (Active)" : ""}
-              </option>
-            ))}
-          </select>
+        {/* Term Filter */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <div className="max-w-xs">
+            <Select label="Term" value={selectedTerm} onChange={(e) => handleTermChange(e.target.value)} options={termOptions} />
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard title="Houses Competing" value={leaderboard.length} icon={Trophy} color="yellow" />
+          <StatCard title="Total Points Awarded" value={totalPoints} icon={Star} color="indigo" />
+          <StatCard title="Students Assigned" value={students.filter((s) => s.house).length} icon={Users} color="green" />
         </div>
 
         {/* Leaderboard */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">House Leaderboard</h2>
-          {leaderboard.length === 0 ? (
-            <p className="text-gray-400 text-sm">No points awarded yet this term.</p>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {leaderboard.map((h, i) => (
-                <div key={h.house} className="bg-indigo-50 rounded-lg p-4 text-center">
-                  <div className={`text-2xl font-bold ${medalColor(i)}`}>{medal(i)}</div>
-                  <div className="font-semibold text-gray-800 mt-1">{h.house}</div>
-                  <div className="text-2xl font-bold text-indigo-600 mt-1">{h.points}</div>
-                  <div className="text-xs text-gray-500">points</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Recent Point Awards */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Recent Awards</h2>
-          {entries.length === 0 ? (
-            <p className="text-gray-400 text-sm">No awards yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">House</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {entries.slice(0, 50).map((e) => (
-                    <tr key={e._id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium">{e.houseName}</td>
-                      <td className="px-4 py-2">
-                        <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700">{e.category}</span>
-                      </td>
-                      <td className="px-4 py-2 font-bold text-indigo-600">+{e.points}</td>
-                      <td className="px-4 py-2 text-gray-600">{e.description}</td>
-                      <td className="px-4 py-2 text-gray-500">{new Date(e.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Students House Assignments */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Student House Assignments</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Adm. No</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">House</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {students.map((s) => (
-                  <tr key={s._id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 font-medium">{s.fullName}</td>
-                    <td className="px-4 py-2 text-gray-500">{s.admissionNumber}</td>
-                    <td className="px-4 py-2">
-                      {s.house ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">{s.house}</span>
-                      ) : (
-                        <span className="text-gray-400 text-xs">Unassigned</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">House Leaderboard</h2>
           </div>
+          {leaderboard.length === 0 ? (
+            <div className="px-6 py-10 text-center">
+              <Trophy className="mx-auto mb-3 text-gray-300" size={36} />
+              <p className="text-gray-500 text-sm">No points awarded yet this term.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6">
+              {leaderboard.map((h, i) => {
+                const style = getRankStyle(i);
+                return (
+                  <div key={h.house} className={`${style.bg} border ${style.border} rounded-xl p-5 text-center transition-shadow hover:shadow-md`}>
+                    {style.medal && <div className="text-3xl mb-1">{style.medal}</div>}
+                    {!style.medal && <div className={`text-lg font-bold ${style.text} mb-1`}>{i + 1}</div>}
+                    <div className="font-semibold text-gray-800 text-sm mt-1 truncate">{h.house}</div>
+                    <div className={`text-3xl font-bold ${style.text} mt-2`}>{h.points}</div>
+                    <div className={`text-xs mt-1 font-medium ${style.text}`}>points</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Awards */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">Recent Awards</h2>
+          </div>
+          {entries.length === 0 ? (
+            <div className="px-6 py-10 text-center">
+              <Star className="mx-auto mb-3 text-gray-300" size={36} />
+              <p className="text-gray-500 text-sm">No awards yet. Click <strong>+ Award Points</strong> to get started.</p>
+            </div>
+          ) : (
+            <DataTable columns={entriesColumns} data={entriesRows} />
+          )}
+        </div>
+
+        {/* Student House Assignments */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">Student House Assignments</h2>
+            <span className="text-xs text-gray-400">{students.filter((s) => s.house).length} / {students.length} assigned</span>
+          </div>
+          <DataTable columns={studentsColumns} data={studentsRows} />
         </div>
       </div>
 
@@ -250,16 +281,10 @@ export default function AdminHousesPage() {
             placeholder="e.g. Red, Awolowo, Gold"
             required
           />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <select
-              value={awardForm.category}
-              onChange={(e) => setAwardForm({ ...awardForm, category: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+          <Select label="Category" value={awardForm.category}
+            onChange={(e) => setAwardForm({ ...awardForm, category: e.target.value })}
+            options={CATEGORIES}
+          />
           <Input
             label="Points"
             type="number"
@@ -268,27 +293,16 @@ export default function AdminHousesPage() {
             placeholder="e.g. 10"
             required
           />
-          <Input
-            label="Description"
-            value={awardForm.description}
+          <Input label="Description" value={awardForm.description}
             onChange={(e) => setAwardForm({ ...awardForm, description: e.target.value })}
             placeholder="e.g. Won inter-house athletics 100m sprint"
             required
           />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Student (optional)</label>
-            <select
-              value={awardForm.studentId}
-              onChange={(e) => setAwardForm({ ...awardForm, studentId: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">— None (team/house award) —</option>
-              {students.map((s) => (
-                <option key={s._id} value={s._id}>{s.fullName} ({s.admissionNumber})</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex gap-3">
+          <Select label="Student (optional — for individual contribution)" value={awardForm.studentId}
+            onChange={(e) => setAwardForm({ ...awardForm, studentId: e.target.value })}
+            options={studentOptions}
+          />
+          <div className="flex gap-3 pt-1">
             <Button type="submit" fullWidth disabled={saving}>{saving ? "Saving…" : "Award Points"}</Button>
             <Button variant="secondary" onClick={() => setShowAwardModal(false)} fullWidth>Cancel</Button>
           </div>
@@ -298,23 +312,12 @@ export default function AdminHousesPage() {
       {/* Assign House Modal */}
       <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign Student to House">
         <form onSubmit={handleAssignHouse} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Student</label>
-            <select
-              value={assignForm.studentId}
-              onChange={(e) => setAssignForm({ ...assignForm, studentId: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              required
-            >
-              <option value="">— Select Student —</option>
-              {students.map((s) => (
-                <option key={s._id} value={s._id}>{s.fullName} ({s.admissionNumber})</option>
-              ))}
-            </select>
-          </div>
-          <Input
-            label="House Name"
-            value={assignForm.house}
+          <Select label="Student" value={assignForm.studentId}
+            onChange={(e) => setAssignForm({ ...assignForm, studentId: e.target.value })}
+            options={studentSelectOptions}
+            required
+          />
+          <Input label="House Name" value={assignForm.house}
             onChange={(e) => setAssignForm({ ...assignForm, house: e.target.value })}
             placeholder="e.g. Red, Awolowo, Gold"
             required

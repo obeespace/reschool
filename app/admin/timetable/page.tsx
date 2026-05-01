@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { PageHeader, Button, LoadingSpinner } from "@/app/components/UIComponents";
+import { PageHeader, Button, LoadingSpinner, Select } from "@/app/components/UIComponents";
 
 type ClassItem = { _id: string; level: string; arm: string };
 type TermItem = { _id: string; termNumber: number; isActive: boolean };
@@ -143,103 +143,106 @@ export default function AdminTimetablePage() {
 
       <div className="p-6 space-y-6">
         {/* Filters */}
-        <div className="flex gap-4 flex-wrap">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
-            <select
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex gap-5 flex-wrap items-end">
+          <div className="flex-1 min-w-[180px]">
+            <Select
+              label="Class"
               value={selectedClass}
               onChange={(e) => handleClassChange(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">— Select Class —</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>{c.level} {c.arm}</option>
-              ))}
-            </select>
+              options={[{ value: "", label: "Select class…" }, ...classes.map((c) => ({ value: c._id, label: `${c.level} ${c.arm}` }))]}
+            />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Term</label>
-            <select
+          <div className="flex-1 min-w-[180px]">
+            <Select
+              label="Term"
               value={selectedTerm}
               onChange={(e) => handleTermChange(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">— Select Term —</option>
-              {terms.map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term
-                  {t.isActive ? " (Active)" : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "Select term…" },
+                ...terms.map((t) => ({
+                  value: t._id,
+                  label: `${t.termNumber === 1 ? "First" : t.termNumber === 2 ? "Second" : "Third"} Term${t.isActive ? " (Active)" : ""}`,
+                })),
+              ]}
+            />
           </div>
         </div>
 
         {/* Timetable Grid */}
         {selectedClass && selectedTerm ? (
-          <div className="overflow-x-auto">
-            <h2 className="text-base font-semibold text-gray-800 mb-3">
-              {selectedClassName ? `${selectedClassName.level} ${selectedClassName.arm}` : ""} — Weekly Schedule
-            </h2>
-            <table className="min-w-full border border-gray-200 rounded-lg overflow-hidden text-xs">
-              <thead className="bg-indigo-50">
-                <tr>
-                  <th className="px-3 py-2 border border-gray-200 text-left font-semibold text-gray-600 w-10">Period</th>
-                  <th className="px-3 py-2 border border-gray-200 text-left font-semibold text-gray-600 w-24">Time</th>
-                  {DAYS.map((d) => (
-                    <th key={d} className="px-3 py-2 border border-gray-200 text-center font-semibold text-indigo-700">{d}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: PERIODS_COUNT }, (_, pi) => (
-                  <tr key={pi} className="even:bg-gray-50">
-                    <td className="px-3 py-2 border border-gray-200 text-center font-semibold text-gray-500">{pi + 1}</td>
-                    <td className="px-3 py-2 border border-gray-200">
-                      <div className="flex gap-1 items-center">
-                        <input
-                          type="time"
-                          value={schedule[0]?.periods[pi]?.startTime ?? ""}
-                          onChange={(e) => DAYS.forEach((_, di) => updatePeriod(di, pi, "startTime", e.target.value))}
-                          className="w-20 border border-gray-200 rounded px-1 py-0.5 text-xs"
-                        />
-                        <span className="text-gray-400">–</span>
-                        <input
-                          type="time"
-                          value={schedule[0]?.periods[pi]?.endTime ?? ""}
-                          onChange={(e) => DAYS.forEach((_, di) => updatePeriod(di, pi, "endTime", e.target.value))}
-                          className="w-20 border border-gray-200 rounded px-1 py-0.5 text-xs"
-                        />
-                      </div>
-                    </td>
-                    {schedule.map((day, di) => {
-                      const p = day.periods[pi];
-                      return (
-                        <td key={day.day} className="px-2 py-1.5 border border-gray-200 min-w-[130px]">
-                          <input
-                            placeholder="Subject"
-                            value={p?.subjectName ?? ""}
-                            onChange={(e) => updatePeriod(di, pi, "subjectName", e.target.value)}
-                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs mb-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          />
-                          <input
-                            placeholder="Teacher"
-                            value={p?.teacherName ?? ""}
-                            onChange={(e) => updatePeriod(di, pi, "teacherName", e.target.value)}
-                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          />
-                        </td>
-                      );
-                    })}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">
+                {selectedClassName ? `${selectedClassName.level} ${selectedClassName.arm}` : ""} — Weekly Schedule
+              </h2>
+              <p className="text-xs text-gray-400">Times set per row apply to all days</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">Period</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-44">Time</th>
+                    {DAYS.map((d) => (
+                      <th key={d} className="px-3 py-3 text-center text-xs font-semibold text-indigo-600 uppercase tracking-wide">{d}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-xs text-gray-500 mt-2">Tip: Set time in the first column — it applies to all days for that period.</p>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {Array.from({ length: PERIODS_COUNT }, (_, pi) => (
+                    <tr key={pi} className="hover:bg-indigo-50/30 transition-colors">
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs">
+                          {pi + 1}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="time"
+                            value={schedule[0]?.periods[pi]?.startTime ?? ""}
+                            onChange={(e) => DAYS.forEach((_, di) => updatePeriod(di, pi, "startTime", e.target.value))}
+                            className="w-[88px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white"
+                          />
+                          <span className="text-gray-300 font-light">—</span>
+                          <input
+                            type="time"
+                            value={schedule[0]?.periods[pi]?.endTime ?? ""}
+                            onChange={(e) => DAYS.forEach((_, di) => updatePeriod(di, pi, "endTime", e.target.value))}
+                            className="w-[88px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white"
+                          />
+                        </div>
+                      </td>
+                      {schedule.map((day, di) => {
+                        const p = day.periods[pi];
+                        return (
+                          <td key={day.day} className="px-2 py-2 min-w-[140px]">
+                            <input
+                              placeholder="Subject"
+                              value={p?.subjectName ?? ""}
+                              onChange={(e) => updatePeriod(di, pi, "subjectName", e.target.value)}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs mb-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white placeholder-gray-300"
+                            />
+                            <input
+                              placeholder="Teacher"
+                              value={p?.teacherName ?? ""}
+                              onChange={(e) => updatePeriod(di, pi, "teacherName", e.target.value)}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors bg-white placeholder-gray-300"
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
-          <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-gray-100">
-            Select a class and term above to view or edit its timetable.
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm py-16 text-center">
+            <div className="text-4xl mb-3">📅</div>
+            <p className="text-gray-500 font-medium">Select a class and term to view or edit the timetable</p>
+            <p className="text-gray-400 text-sm mt-1">Changes are saved per class per term</p>
           </div>
         )}
       </div>
