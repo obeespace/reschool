@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
-import { getOptionalD1Client } from "@/app/db/runtime";
-import { schools, students, users } from "@/app/db/schema";
+import connectDB from "@/app/utils/db";
+import School from "@/app/models/School";
+import User from "@/app/models/User";
+import Student from "@/app/models/Students";
 
 export async function GET() {
   try {
-    const d1 = getOptionalD1Client();
-    if (!d1) {
-      return NextResponse.json(
-        {
-          ok: false,
-          service: "week1-test",
-          dbConfigured: false,
-          timestamp: new Date().toISOString(),
-        },
-        { status: 503 }
-      );
-    }
-
-    const [schoolRows, userRows, studentRows] = await Promise.all([
-      d1.select({ id: schools.id }).from(schools),
-      d1.select({ id: users.id }).from(users),
-      d1.select({ id: students.id }).from(students),
+    await connectDB();
+    const [schoolCount, userCount, studentCount] = await Promise.all([
+      School.countDocuments(),
+      User.countDocuments(),
+      Student.countDocuments(),
     ]);
 
     return NextResponse.json({
@@ -29,9 +19,9 @@ export async function GET() {
       dbConfigured: true,
       timestamp: new Date().toISOString(),
       stats: {
-        schools: schoolRows.length,
-        users: userRows.length,
-        students: studentRows.length,
+        schools: schoolCount,
+        users: userCount,
+        students: studentCount,
       },
     });
   } catch (error: unknown) {
