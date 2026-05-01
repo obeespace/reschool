@@ -111,13 +111,18 @@ export async function POST(req: Request) {
     });
 
     let parentUserId: mongoose.Types.ObjectId | null = null;
+    let parentAccountCreated = false;
+    let resolvedParentPassword: string | null = null;
 
     if (parentEmail) {
       const existing = await User.findOne({ schoolId, email: parentEmail }).lean();
       if (existing) {
         parentUserId = (existing as { _id: mongoose.Types.ObjectId })._id;
+        parentAccountCreated = false;
       } else {
-        const hash = await bcrypt.hash(parentPassword || "changeme123", 10);
+        // Use provided password or fall back to auto-generated one
+        resolvedParentPassword = parentPassword || `Parent${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+        const hash = await bcrypt.hash(resolvedParentPassword, 10);
         const newParent = await User.create({
           schoolId,
           fullName: parentFullName || "Parent",
@@ -127,6 +132,7 @@ export async function POST(req: Request) {
           role: "PARENT",
         });
         parentUserId = newParent._id;
+        parentAccountCreated = true;
       }
 
       await ParentWardLink.create({
@@ -141,6 +147,11 @@ export async function POST(req: Request) {
       message: "Student created successfully",
       student: { _id: student._id.toString(), id: student._id.toString(), fullName, admissionNumber },
       parentId: parentUserId ? parentUserId.toString() : null,
+      parentAccountCreated,
+      // Credentials returned ONLY when a NEW parent account was just created — hand to admin immediately
+      parentCredentials: parentAccountCreated && parentEmail
+        ? { email: parentEmail, password: resolvedParentPassword }
+        : null,
     }, { status: 201 });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to create student" }, { status: 500 });
