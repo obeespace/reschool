@@ -17,6 +17,12 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', 'sonner'],
   },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = [...(config.externals || []), '@libsql/client'];
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
