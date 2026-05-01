@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/app/components/Sidebar";
 import { PageHeader, LoadingSpinner, Select } from "@/app/components/UIComponents";
@@ -89,13 +89,12 @@ function ParentScoresContent() {
       ]);
 
       let activeTermId = "";
-      let activeSessionId = "";
 
       if (archiveRes.ok) {
         const data = await archiveRes.json();
         setArchiveYears(data.academicYears || []);
         setArchiveTerms(data.terms || []);
-        if (data.activeAcademicYearId) { setSelectedSessionId(data.activeAcademicYearId); activeSessionId = data.activeAcademicYearId; }
+        if (data.activeAcademicYearId) { setSelectedSessionId(data.activeAcademicYearId); }
         if (data.activeTermId) { setSelectedTermId(data.activeTermId); activeTermId = data.activeTermId; }
       }
 
@@ -111,10 +110,10 @@ function ParentScoresContent() {
     init();
   }, [router, searchParams, fetchWards, fetchScores]);
 
-  // Refetch when ward or term selection changes
-  const [initialized, setInitialized] = useState(false);
+  // Refetch when ward or term selection changes (skip the first render that fires on mount)
+  const didMountRef = useRef(false);
   useEffect(() => {
-    if (!initialized) { setInitialized(true); return; }
+    if (!didMountRef.current) { didMountRef.current = true; return; }
     if (selectedWard && selectedTermId) {
       fetchScores(selectedWard, selectedTermId);
     }

@@ -19,11 +19,6 @@ interface Teacher {
   };
 }
 
-interface Subject {
-  id: string;
-  name: string;
-}
-
 interface Class {
   _id: string;
   level: string;
@@ -34,7 +29,6 @@ interface Class {
 export default function TeachersPage() {
   const router = useRouter();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -55,7 +49,6 @@ export default function TeachersPage() {
     }
 
     fetchTeachers();
-    fetchSubjects();
     fetchClasses();
   }, []);
 
@@ -75,22 +68,6 @@ export default function TeachersPage() {
       console.error("Failed to fetch teachers:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchSubjects = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch("/api/subjects", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSubjects(data.subjects);
-      }
-    } catch (error) {
-      console.error("Failed to fetch subjects:", error);
     }
   };
 

@@ -4,7 +4,6 @@ import connectDB from "@/app/utils/db";
 import Student from "@/app/models/Students";
 import Class from "@/app/models/Class";
 import Subject from "@/app/models/Subject";
-import Term from "@/app/models/Term";
 import mongoose from "mongoose";
 
 // GET /api/export/waec-registration?termId=
@@ -14,9 +13,6 @@ export async function GET(req: Request) {
     const token = req.headers.get("authorization")?.split(" ")[1];
     const admin: ITokenPayload | null = verifyToken(token || "");
     if (!admin || admin.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-
-    const { searchParams } = new URL(req.url);
-    const termId = searchParams.get("termId");
 
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(admin.schoolId);

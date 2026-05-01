@@ -1,6 +1,6 @@
 import { ReactNode, memo } from "react";
 import { LucideIcon } from "lucide-react";
-import { STAT_CARD_COLORS, BUTTON_VARIANTS, THEME, mergeThemeClasses } from "@/app/lib/theme";
+import { STAT_CARD_COLORS, THEME, mergeThemeClasses } from "@/app/lib/theme";
 
 interface CardProps {
   title: string;

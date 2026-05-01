@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(admin.schoolId);
 
-    let recipientQuery: object = recipientIds.length
+    const recipientQuery: object = recipientIds.length
       ? { schoolId, _id: { $in: recipientIds.map((id) => new mongoose.Types.ObjectId(id)) } }
       : recipientRole
         ? { schoolId, role: recipientRole }

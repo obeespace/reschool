@@ -4,7 +4,6 @@ import connectDB from "@/app/utils/db";
 import Score from "@/app/models/Score";
 import Student from "@/app/models/Students";
 import Subject from "@/app/models/Subject";
-import AcademicYear from "@/app/models/AcademicYear";
 import mongoose from "mongoose";
 
 export async function GET(req: Request) {

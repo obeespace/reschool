@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    let filter: Record<string, unknown> = { schoolId };
+    const filter: Record<string, unknown> = { schoolId };
     if (classId) filter.classId = new mongoose.Types.ObjectId(classId);
     if (subjectId) filter.subjectId = new mongoose.Types.ObjectId(subjectId);
     if (studentId) filter.studentId = new mongoose.Types.ObjectId(studentId);

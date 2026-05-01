@@ -32,7 +32,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     ]);
 
     const subjectMap = new Map((subjects as {_id: mongoose.Types.ObjectId; name: string}[]).map((s) => [s._id.toString(), s.name]));
-    const termMap = new Map((terms as {_id: mongoose.Types.ObjectId; termNumber: number; academicYearId: mongoose.Types.ObjectId}[]).map((t) => [t._id.toString(), t]));
     const yearMap = new Map((years as {_id: mongoose.Types.ObjectId; name: string}[]).map((y) => [y._id.toString(), y.name]));
 
     return NextResponse.json({

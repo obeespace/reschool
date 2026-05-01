@@ -70,7 +70,6 @@ export async function POST(req: Request) {
 
     if (existing.length > 0) await TeacherRewardWinners.deleteMany({ schoolId, termId });
 
-    const now = new Date();
     await TeacherRewardWinners.insertMany(
       leaderboard.map((item) => ({
         schoolId,

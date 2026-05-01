@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Users, GraduationCap, UsersRound, School, TrendingUp, Mail, Phone, MapPin } from "lucide-react";
+import { Users, GraduationCap, UsersRound, School, TrendingUp, Phone, MapPin } from "lucide-react";
 import DashboardLayout from "@/app/components/Sidebar";
 import { StatCard, PageHeader, LoadingSpinner } from "@/app/components/UIComponents";
 

@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import connectDB from "@/app/utils/db";
 import AttendanceRecord from "@/app/models/AttendanceRecord";
 import Term from "@/app/models/Term";
-import Student from "@/app/models/Students";
 import mongoose from "mongoose";
 
 export async function GET(req: Request) {

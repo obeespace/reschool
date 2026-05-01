@@ -6,19 +6,6 @@ import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
 import { DEFAULT_CLASS_TEMPLATES, DEFAULT_SUBJECT_TEMPLATES } from "@/app/lib/setupTemplates";
 
-type SetupStatusResponse = {
-  isComplete: boolean;
-  status: {
-    hasSession: boolean;
-    hasCurrentTerm: boolean;
-    hasClasses: boolean;
-    hasArms: boolean;
-    hasSubjects: boolean;
-    hasAdmissionSettings: boolean;
-  };
-  nextStep: number;
-};
-
 export default function AdminSetupPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);

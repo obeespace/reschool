@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { PageHeader, DataTable, Button } from "@/app/components/UIComponents";
+import { DataTable } from "@/app/components/UIComponents";
 import { ChevronLeft } from "lucide-react";
 
 interface Ward {

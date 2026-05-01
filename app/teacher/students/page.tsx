@@ -78,7 +78,7 @@ export default function TeacherStudentsPage() {
 
   const handleDelete = async (studentId: string) => {
     setDeletingId(studentId);
-    const toastId = toast.custom((t) => (
+    const toastId = toast.custom((_t) => (
       <div className="bg-white rounded-lg p-4 shadow-lg border border-gray-200 space-y-3">
         <p className="font-medium text-gray-900">Delete this student?</p>
         <p className="text-sm text-gray-600">This action cannot be undone.</p>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import DashboardLayout from "@/app/components/Sidebar";
-import { PageHeader, DataTable, Modal, Button, Input, Select } from "@/app/components/UIComponents";
+import { PageHeader, DataTable, Modal, Button, Input } from "@/app/components/UIComponents";
 
 interface Parent {
   id: string;

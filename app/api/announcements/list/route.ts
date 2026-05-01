@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
     const rows = await Announcement.find({ schoolId }).sort({ createdAt: -1 }).lean();
 
-    let parentVisibleClassIds = new Set<string>();
+    const parentVisibleClassIds = new Set<string>();
     if (user.role === "PARENT") {
       const wardLinks = await ParentWardLink.find({ schoolId, parentId: new mongoose.Types.ObjectId(user.userId) }).lean();
       const wardIds = wardLinks.map((w) => w.studentId);
