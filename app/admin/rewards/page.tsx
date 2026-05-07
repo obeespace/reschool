@@ -46,6 +46,7 @@ export default function AdminRewardsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [termId, setTermId] = useState<string | null>(null);
+  const [termName, setTermName] = useState<string>("");
   const [liveTop, setLiveTop] = useState<RewardEntry[]>([]);
   const [finalized, setFinalized] = useState(false);
   const [winners, setWinners] = useState<WinnerRow[]>([]);
@@ -65,6 +66,7 @@ export default function AdminRewardsPage() {
 
     setLiveTop(Array.isArray(data.leaderboard) ? data.leaderboard : []);
     setTermId(data.termId || null);
+    if (data.termName) setTermName(data.termName);
   }, []);
 
   const fetchFinalized = useCallback(async () => {
@@ -234,7 +236,7 @@ export default function AdminRewardsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">Term</p>
-            <p className="text-xl font-semibold text-gray-900">{termId || "N/A"}</p>
+            <p className="text-xl font-semibold text-gray-900">{termName || "N/A"}</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">Live Ranked</p>

@@ -10,13 +10,13 @@ interface Teacher {
   _id: string;
   fullName: string;
   email: string;
-  profile?: {
-    classTeacherOf?: {
-      level: string;
-      arm: string;
-    };
-    subjectsAndClasses?: Array<any>;
-  };
+  classTeacherOf?: {
+    _id: string;
+    level: string;
+    arm: string;
+    name: string;
+  } | null;
+  subjectsAndClasses?: Array<{ subjectId: { _id: string; name: string }; classIds: Array<{ _id: string; name: string }> }>;
 }
 
 interface Class {
@@ -132,13 +132,13 @@ export default function TeachersPage() {
     { header: "Email", accessor: "email" as keyof Teacher },
     { 
       header: "Class Teacher", 
-      accessor: "profile" as keyof Teacher,
-      render: (value: any) => value?.classTeacherOf ? `${value.classTeacherOf.level} ${value.classTeacherOf.arm}` : "Not Assigned"
+      accessor: "classTeacherOf" as keyof Teacher,
+      render: (value: any) => value?.name || <span className="text-slate-400 text-xs italic">Not assigned</span>
     },
     { 
       header: "Subjects Teaching", 
-      accessor: "profile" as keyof Teacher,
-      render: (value: any) => `${value?.subjectsAndClasses?.length || 0} subjects`
+      accessor: "subjectsAndClasses" as keyof Teacher,
+      render: (value: any) => `${value?.length || 0} subject${value?.length !== 1 ? "s" : ""}`
     },
     {
       header: "Actions",
@@ -200,13 +200,8 @@ export default function TeachersPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Debug info */}
           {classes.length === 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 p-3 rounded text-sm text-yellow-800">
-              ⚠️ No classes found. Please create classes first in the Classes section.
-            </div>
-          )}
-          {classes.length > 0 && (
-            <div className="bg-green-50 border border-green-200 p-2 rounded text-xs text-green-700">
-              ✓ {classes.length} classes available
+            <div className="bg-amber-50 rounded-xl px-4 py-3 text-sm text-amber-800">
+              ⚠️ No classes found — create classes first in the Classes section.
             </div>
           )}
           <Input

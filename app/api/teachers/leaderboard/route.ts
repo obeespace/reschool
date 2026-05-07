@@ -17,14 +17,17 @@ export async function GET(req: Request) {
     await connectDB();
     const schoolId = new mongoose.Types.ObjectId(user.schoolId);
 
-    let termId;
+    let termId: mongoose.Types.ObjectId | undefined;
+    let termName: string = "";
     const termIdQ = searchParams.get("termId");
     if (termIdQ) {
-      const t = await Term.findOne({ schoolId, _id: new mongoose.Types.ObjectId(termIdQ) }).lean();
+      const t = await Term.findOne({ schoolId, _id: new mongoose.Types.ObjectId(termIdQ) }).lean() as { _id: mongoose.Types.ObjectId; termNumber?: number; name?: string } | null;
       termId = t?._id;
+      termName = t ? (t.name || `Term ${t.termNumber}`) : "";
     } else {
-      const t = await Term.findOne({ schoolId, isActive: true }).lean();
+      const t = await Term.findOne({ schoolId, isActive: true }).lean() as { _id: mongoose.Types.ObjectId; termNumber?: number; name?: string } | null;
       termId = t?._id;
+      termName = t ? (t.name || `Term ${t.termNumber}`) : "";
     }
 
     if (!termId) return NextResponse.json({ leaderboard: [] });
@@ -43,6 +46,7 @@ export async function GET(req: Request) {
           breakdown: w.breakdown,
         })),
         termId: termId.toString(),
+        termName,
         finalized: true,
       });
     }
@@ -69,6 +73,7 @@ export async function GET(req: Request) {
         breakdown: {},
       })),
       termId: termId.toString(),
+      termName,
       finalized: false,
     });
   } catch (error: unknown) {

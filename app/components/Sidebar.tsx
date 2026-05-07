@@ -216,7 +216,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto">
+        <nav className="sidebar-nav flex-1 p-3 overflow-y-auto">
           <ul className="space-y-1">
             {links.map((link) => {
               const Icon = link.icon;
