@@ -83,6 +83,17 @@ export default function AdminDashboard() {
         router.push("/admin/setup");
         return;
       }
+      // Auto-backfill Subject/Class records if setup was completed before
+      // the migration that creates those records (safe to run multiple times)
+      if (data.stats.subjects === 0 || data.stats.classes === 0) {
+        const migrateToken = localStorage.getItem("token");
+        if (migrateToken) {
+          fetch("/api/admin/migrate-setup", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${migrateToken}` },
+          }).catch(() => {/* silent — non-critical */});
+        }
+      }
     } catch (error) {
       if (error instanceof ApiRequestError) {
         console.error("Error fetching stats:", {

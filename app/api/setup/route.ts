@@ -5,6 +5,8 @@ import SchoolSetup from "@/app/models/SchoolSetup";
 import School from "@/app/models/School";
 import AcademicYear from "@/app/models/AcademicYear";
 import Term from "@/app/models/Term";
+import Subject from "@/app/models/Subject";
+import Class from "@/app/models/Class";
 
 // GET: Check setup status
 export async function GET(req: NextRequest) {
@@ -188,12 +190,42 @@ export async function POST(req: NextRequest) {
 
     await setup.save();
 
+    // Create Subject records from setup subjects
+    const createdSubjects = await Promise.all(
+      subjects.map((subjectName: string) =>
+        Subject.findOneAndUpdate(
+          { schoolId: payload.schoolId, name: subjectName.trim() },
+          { schoolId: payload.schoolId, name: subjectName.trim() },
+          { upsert: true, new: true }
+        )
+      )
+    );
+
+    // Create Class records for each level × arm combination
+    const classRecords: Array<{ level: string; arm: string }> = [];
+    for (const level of classLevels) {
+      for (const arm of classArms) {
+        classRecords.push({ level, arm });
+      }
+    }
+    const createdClasses = await Promise.all(
+      classRecords.map(({ level, arm }) =>
+        Class.findOneAndUpdate(
+          { schoolId: payload.schoolId, level, arm },
+          { schoolId: payload.schoolId, level, arm },
+          { upsert: true, new: true }
+        )
+      )
+    );
+
     return NextResponse.json(
       {
         message: "Setup completed successfully",
         setupData: setup,
         academicYear,
         terms: createdTerms,
+        subjects: createdSubjects,
+        classes: createdClasses,
       },
       { status: 201 }
     );

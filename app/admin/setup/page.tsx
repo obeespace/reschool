@@ -155,6 +155,15 @@ export default function AdminSetupPage() {
         throw new Error(data?.error || "Setup failed");
       }
 
+      // The setup API already creates Subject/Class records (and backfills if needed)
+      // Run a migration call to ensure everything is in place before redirecting
+      await fetch("/api/admin/migrate-setup", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }).catch(() => {/* non-critical, dashboard will retry */});
+
       toast.success("Setup completed successfully! Welcome to your dashboard.");
       router.push("/admin/dashboard");
     } catch (error: unknown) {
