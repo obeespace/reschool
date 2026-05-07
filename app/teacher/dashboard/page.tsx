@@ -247,12 +247,12 @@ export default function TeacherDashboard() {
         </div>
 
         {/* Announcements Section */}
-        <div className="bg-white rounded-lg shadow p-6 mt-8">
-          <div className="flex justify-between items-center mb-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6 mt-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h2 className="text-xl font-bold">Announcements</h2>
             <button
               onClick={() => setShowAnnouncementForm(!showAnnouncementForm)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
             >
               {showAnnouncementForm ? "Cancel" : "Create Class Announcement"}
             </button>
@@ -316,15 +316,15 @@ export default function TeacherDashboard() {
               <p className="text-gray-500 text-center py-4">No announcements yet</p>
             ) : (
               announcements.map((announcement) => (
-                <div key={announcement.id} className="p-4 border rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
+                <div key={announcement.id} className="p-4 border border-gray-200 rounded-xl">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
                     <h3 className="font-semibold">{announcement.title}</h3>
                     <span className="text-xs px-2 py-1 bg-gray-100 rounded">
                       {announcement.announcementType === "GENERAL" ? "General" : "Class"}
                     </span>
                   </div>
                   <p className="text-gray-700 mb-2">{announcement.message}</p>
-                  <div className="flex justify-between text-sm text-gray-500">
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-1 text-sm text-gray-500">
                     <span>Posted by: {announcement.postedBy.name} ({announcement.postedBy.role})</span>
                     <span>{new Date(announcement.createdAt).toLocaleDateString()}</span>
                   </div>

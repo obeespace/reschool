@@ -286,9 +286,9 @@ export default function TeacherProfilePage() {
         description="Teacher Profile & Assignments"
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         {/* Basic Info */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
           <h2 className="text-xl font-bold mb-4">Basic Information</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
@@ -303,13 +303,13 @@ export default function TeacherProfilePage() {
         </div>
 
         {/* Class Teacher Assignment */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h2 className="text-xl font-bold">Class Teacher</h2>
             {!teacher.classTeacherOf ? (
               <button
                 onClick={() => setShowClassTeacherModal(true)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
               >
                 + Assign as Class Teacher
               </button>
@@ -317,7 +317,7 @@ export default function TeacherProfilePage() {
               <button
                 onClick={handleRemoveClassTeacher}
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400"
+                className="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400"
               >
                 Remove Class Teacher
               </button>
@@ -337,12 +337,12 @@ export default function TeacherProfilePage() {
         </div>
 
         {/* Subject Assignments */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
             <h2 className="text-xl font-bold">Subject Assignments</h2>
             <button
               onClick={() => setShowSubjectModal(true)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
             >
               + Assign Subject
             </button>

@@ -463,8 +463,8 @@ export default function AdminDashboard() {
         </div>
 
         {/* Announcements Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-8">
-          <div className="flex justify-between items-center mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mt-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
@@ -473,7 +473,7 @@ export default function AdminDashboard() {
             </h2>
             <button
               onClick={() => setShowAnnouncementForm(!showAnnouncementForm)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium"
+              className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm text-sm font-medium"
             >
               {showAnnouncementForm ? "Cancel" : "+ New Announcement"}
             </button>
@@ -540,14 +540,14 @@ export default function AdminDashboard() {
             ) : (
               announcements.map((announcement) => (
                 <div key={announcement.id} className="p-5 border border-gray-200 rounded-xl hover:shadow-md transition-shadow bg-white">
-                  <div className="flex justify-between items-start mb-3">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
                     <h3 className="font-semibold text-gray-900 text-base">{announcement.title}</h3>
-                    <span className="text-xs px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full font-medium whitespace-nowrap ml-2">
+                    <span className="text-xs px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full font-medium whitespace-nowrap">
                       {announcement.targetAudience.replace(/_/g, " ")}
                     </span>
                   </div>
                   <p className="text-gray-700 text-sm mb-3 leading-relaxed">{announcement.message}</p>
-                  <div className="flex justify-between items-center text-xs text-gray-500 pt-3 border-t border-gray-100">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-xs text-gray-500 pt-3 border-t border-gray-100">
                     <span className="flex items-center gap-1">
                       <span className="font-medium">{announcement.postedBy.name}</span>
                       <span>•</span>
