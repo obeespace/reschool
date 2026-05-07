@@ -196,14 +196,14 @@ export default function AdminHousesPage() {
         title="House System"
         description="Manage inter-house competition, award points, and assign students to houses"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
             <Button variant="secondary" onClick={() => setShowAssignModal(true)}>Assign House</Button>
             <Button onClick={() => setShowAwardModal(true)}>+ Award Points</Button>
           </div>
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         {/* Term Filter */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <div className="max-w-xs">
@@ -229,7 +229,7 @@ export default function AdminHousesPage() {
               <p className="text-gray-500 text-sm">No points awarded yet this term.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-6">
               {leaderboard.map((h, i) => {
                 const style = getRankStyle(i);
                 return (

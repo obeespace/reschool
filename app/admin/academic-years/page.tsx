@@ -172,7 +172,7 @@ export default function AcademicYearsPage() {
         }
       />
 
-      <div className="bg-white rounded-lg shadow">
+      <div className="px-4 sm:px-6 pb-6 pt-4 sm:pt-6">
         <DataTable data={academicYears} columns={columns} />
       </div>
 

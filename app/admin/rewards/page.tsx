@@ -215,7 +215,7 @@ export default function AdminRewardsPage() {
         title="Teacher Rewards"
         description="Term-based top 5 winners across the entire app"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
             <Button variant="secondary" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? "Refreshing..." : "Refresh"}
             </Button>
@@ -230,21 +230,21 @@ export default function AdminRewardsPage() {
         }
       />
 
-      <div className="space-y-6">
+      <div className="px-4 sm:px-6 pb-6 pt-4 sm:pt-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">Term</p>
             <p className="text-xl font-semibold text-gray-900">{termId || "N/A"}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">Live Ranked</p>
             <p className="text-xl font-semibold text-gray-900">{liveTop.length}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">Finalized</p>
             <p className="text-xl font-semibold text-gray-900">{finalized ? "Yes" : "No"}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-4">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">Gift Slots</p>
             <p className="text-xl font-semibold text-gray-900">5</p>
           </div>

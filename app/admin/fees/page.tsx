@@ -200,7 +200,7 @@ export default function AdminFeesPage() {
         action={<Button onClick={() => setShowRecordModal(true)}>+ Record Fees</Button>}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         {/* Filters */}
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex gap-5 flex-wrap items-end">
           <div className="flex-1 min-w-45">

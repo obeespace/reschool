@@ -15,6 +15,7 @@ export const StatCard = memo(function StatCard({ title, value, icon: Icon, color
 
   return (
     <div className={mergeThemeClasses(
+      "group",
       THEME.component.card.backgroundColor,
       THEME.component.card.border,
       THEME.component.card.borderRadius,
@@ -25,8 +26,8 @@ export const StatCard = memo(function StatCard({ title, value, icon: Icon, color
     )}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-gray-600 text-sm font-medium mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-900 mb-2">{value}</p>
+          <p className="text-slate-600 text-sm font-medium mb-1">{title}</p>
+          <p className="text-3xl font-bold tracking-tight text-slate-900 mb-2">{value}</p>
           {trend && (
             <p className={`text-sm font-medium flex items-center gap-1 ${trend.isPositive ? 'text-green-600' : 'text-red-600'}`}>
               <span>{trend.isPositive ? '↑' : '↓'}</span>
@@ -35,7 +36,7 @@ export const StatCard = memo(function StatCard({ title, value, icon: Icon, color
             </p>
           )}
         </div>
-        <div className={`${colors.bg} ${THEME.component.card.borderRadius} p-3`}>
+        <div className={`${colors.bg} ${THEME.component.card.borderRadius} p-3 border border-white/70 shadow-inner transition-colors duration-200 group-hover:bg-white`}>
           <Icon className={colors.icon} size={24} />
         </div>
       </div>
@@ -165,9 +166,9 @@ export const Modal = memo(function Modal({ isOpen, onClose, title, children }: M
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="border-b border-gray-100 px-6 py-4 flex justify-between items-center sticky top-0 bg-white">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl border border-slate-200/80 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-[0_24px_80px_-32px_rgba(2,6,23,0.6)]">
+        <div className="border-b border-slate-100 px-6 py-4 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur">
           <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
@@ -206,14 +207,14 @@ export const Button = memo(function Button({
   className = "",
 }: ButtonProps) {
   const variantClasses = {
-    primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow",
-    secondary: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-sm",
-    danger: "bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow",
+    primary: "bg-blue-600 hover:bg-blue-700 text-white border border-blue-700/70 shadow-[0_8px_16px_-12px_rgba(37,99,235,0.85)] hover:shadow-[0_14px_24px_-16px_rgba(29,78,216,0.85)]",
+    secondary: "bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-[0_8px_16px_-14px_rgba(15,23,42,0.55)] hover:border-slate-400",
+    danger: "bg-red-600 hover:bg-red-700 text-white border border-red-700/70 shadow-[0_8px_16px_-12px_rgba(220,38,38,0.8)] hover:shadow-[0_14px_24px_-16px_rgba(185,28,28,0.8)]",
   };
 
   const sizeClasses = {
     sm: "px-3 py-1.5 text-sm",
-    md: "px-4 py-2 text-sm",
+    md: "px-4 py-2.5 text-sm",
     lg: "px-6 py-3 text-base",
   };
 
@@ -227,9 +228,10 @@ export const Button = memo(function Button({
         sizeClasses[size],
         fullWidth ? "w-full" : "",
         className,
-        "rounded-lg font-medium transition-all",
-        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none",
-        "focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        "rounded-xl font-semibold transition-[background-color,border-color,box-shadow,color] duration-200",
+        "active:scale-[0.995]",
+        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:bg-inherit",
+        "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
       )}
     >
       {children}
@@ -268,7 +270,7 @@ export const Input = memo(function Input({
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-sm"
+        className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm"
       />
     </div>
   );
@@ -301,7 +303,7 @@ export const Select = memo(function Select({
         value={value}
         onChange={onChange}
         required={required}
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-sm bg-white"
+        className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm bg-white"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -335,20 +337,20 @@ export const PageHeader = memo(function PageHeader({ title, description, action 
     <div className={mergeThemeClasses(
       THEME.component.card.backgroundColor,
       THEME.component.card.border,
-      "border-b px-6 py-6"
+      "border-b px-4 sm:px-6 py-5 sm:py-6 backdrop-blur supports-backdrop-filter:bg-white/95"
     )}>
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
         <div>
-          <h1 className="text-4xl font-bold text-gray-900">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
             {title}
           </h1>
           {description && (
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
               {description}
             </p>
           )}
         </div>
-        {action && <div>{action}</div>}
+        {action && <div className="w-full sm:w-auto">{action}</div>}
       </div>
     </div>
   );

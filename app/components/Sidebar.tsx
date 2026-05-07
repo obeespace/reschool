@@ -161,7 +161,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
   return (
     <div className={mergeThemeClasses(
       "flex min-h-screen",
-      "bg-gray-50"
+      "bg-linear-to-br from-slate-50 via-white to-blue-50/40"
     )}>
       {/* Mobile Overlay Backdrop - Only when expanded */}
       {mobileSidebarOpen && (
@@ -228,10 +228,10 @@ function DashboardLayout({ role, children }: SidebarProps) {
                     prefetch={true}
                     onClick={() => setMobileSidebarOpen(false)}
                     className={mergeThemeClasses(
-                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                      "relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent transition-[background-color,border-color,box-shadow,color] duration-200",
                       isActive
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "text-gray-700 hover:bg-gray-50"
+                        ? "bg-white text-blue-700 border-blue-200/90 shadow-[0_8px_18px_-14px_rgba(37,99,235,0.7)] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-blue-600"
+                        : "text-gray-700 hover:bg-white/85 hover:border-slate-200/90 hover:shadow-[0_10px_20px_-16px_rgba(15,23,42,0.45)]"
                     )}
                     title={sidebarCollapsed ? link.name : undefined}
                   >
@@ -255,7 +255,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
           <button
             onClick={handleLogout}
             className={mergeThemeClasses(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent text-gray-700 hover:bg-red-50/80 hover:border-red-100 hover:text-red-600 transition-[background-color,border-color,box-shadow,color] duration-200"
             )}
             title={sidebarCollapsed ? "Logout" : undefined}
           >
@@ -271,18 +271,18 @@ function DashboardLayout({ role, children }: SidebarProps) {
         <div className={mergeThemeClasses(
           THEME.component.card.backgroundColor,
           THEME.component.card.border,
-          "border-b px-6 py-4 flex justify-between items-center sticky top-0 z-10",
+          "border-b px-4 sm:px-6 py-4 flex justify-between items-center sticky top-0 z-10 backdrop-blur supports-backdrop-filter:bg-white/92",
           THEME.component.card.shadow
         )}>
           <div className="flex items-center gap-4">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-2 rounded-xl hover:bg-slate-100 transition-colors"
               aria-label="Open menu"
             >
               <Menu size={20} className="text-gray-600" />
             </button>
-            <h2 className="text-sm text-gray-600">
+            <h2 className="text-sm font-medium text-slate-600 tracking-tight">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </h2>
           </div>
@@ -293,7 +293,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
               <input
                 type="text"
                 placeholder="Search..."
-                className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-64"
+                className="pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64 bg-white/80"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -306,7 +306,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="relative p-2 rounded-xl border border-transparent hover:bg-slate-100 hover:border-slate-200 transition-colors"
               >
                 <Bell size={20} className="text-gray-600" />
                 {unreadCount > 0 && (
@@ -318,8 +318,8 @@ function DashboardLayout({ role, children }: SidebarProps) {
 
               {/* Notification Dropdown */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50">
-                  <div className="p-4 border-b border-gray-100 flex justify-between items-center">
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-2xl shadow-[0_24px_60px_-30px_rgba(2,6,23,0.65)] border border-slate-200/80 z-50 overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center">
                     <h3 className="font-semibold text-gray-900">Notifications</h3>
                     <button
                       onClick={() => {
@@ -342,7 +342,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
                       recentAnnouncements.map((announcement) => (
                         <div
                           key={announcement.id}
-                          className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="p-4 border-b border-slate-100 hover:bg-slate-50/80 cursor-pointer transition-colors"
                           onClick={() => {
                             markAsRead(announcement.id);
                             const announcementsPath = `/${role.toLowerCase()}/announcements`;

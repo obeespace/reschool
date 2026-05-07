@@ -175,6 +175,7 @@ export default function AdminCertificatesPage() {
         }
       />
 
+      <div className="px-4 sm:px-6 pb-6 pt-4 sm:pt-6">
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
@@ -183,7 +184,7 @@ export default function AdminCertificatesPage() {
           { label: "Approved", value: totalApproved, color: "text-blue-600" },
           { label: "Pending", value: totalPending, color: "text-yellow-600" },
         ].map((item) => (
-          <div key={item.label} className="bg-white border rounded-lg p-4 shadow-sm">
+          <div key={item.label} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <p className="text-sm text-gray-500 font-medium mb-1">{item.label}</p>
             <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
           </div>
@@ -202,7 +203,7 @@ export default function AdminCertificatesPage() {
 
       {/* Filter */}
       <div className="flex items-center gap-4 mb-4">
-        <div className="w-56">
+        <div className="w-full sm:w-56">
           <Select
             label="Filter by Status"
             value={statusFilter}
@@ -220,50 +221,52 @@ export default function AdminCertificatesPage() {
       {loading ? (
         <div className="text-gray-500 py-8 text-center">Loading certificates…</div>
       ) : certificates.length > 0 ? (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b text-gray-700">
-              <tr>
-                {["Cert No.", "Student", "Admission No.", "Class", "Grad Year", "Status", "Eligibility", "Actions"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {certificates.map((cert) => (
-                <tr key={cert.id} className="border-b hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-xs">{cert.certificateNumber}</td>
-                  <td className="px-4 py-3 font-medium">{cert.studentName}</td>
-                  <td className="px-4 py-3 text-gray-600">{cert.studentAdmissionNumber}</td>
-                  <td className="px-4 py-3">{cert.classLevel}</td>
-                  <td className="px-4 py-3">{cert.graduationYear}</td>
-                  <td className="px-4 py-3">{statusBadge(cert.signatureApprovalStatus)}</td>
-                  <td className="px-4 py-3">
-                    <span className={cert.eligibility?.eligible ? "text-green-600" : "text-red-500"}>
-                      {cert.eligibility?.eligible ? "✓ Eligible" : cert.eligibility?.reason ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      {cert.signatureApprovalStatus !== "SIGNED" && (
-                        <Button variant="primary" onClick={() => openSignModal(cert)}>
-                          {cert.signatureApprovalStatus === "PENDING" ? "Approve" : "Sign"}
-                        </Button>
-                      )}
-                      {cert.signatureApprovalStatus === "SIGNED" && (
-                        <Button variant="secondary" onClick={() => handleReprint(cert.id)}>
-                          Reprint
-                        </Button>
-                      )}
-                    </div>
-                  </td>
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b text-gray-700">
+                <tr>
+                  {["Cert No.", "Student", "Admission No.", "Class", "Grad Year", "Status", "Eligibility", "Actions"].map((h) => (
+                    <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {certificates.map((cert) => (
+                  <tr key={cert.id} className="border-b hover:bg-gray-50">
+                    <td className="px-4 py-3 font-mono text-xs">{cert.certificateNumber}</td>
+                    <td className="px-4 py-3 font-medium">{cert.studentName}</td>
+                    <td className="px-4 py-3 text-gray-600">{cert.studentAdmissionNumber}</td>
+                    <td className="px-4 py-3">{cert.classLevel}</td>
+                    <td className="px-4 py-3">{cert.graduationYear}</td>
+                    <td className="px-4 py-3">{statusBadge(cert.signatureApprovalStatus)}</td>
+                    <td className="px-4 py-3">
+                      <span className={cert.eligibility?.eligible ? "text-green-600" : "text-red-500"}>
+                        {cert.eligibility?.eligible ? "✓ Eligible" : cert.eligibility?.reason ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        {cert.signatureApprovalStatus !== "SIGNED" && (
+                          <Button variant="primary" onClick={() => openSignModal(cert)}>
+                            {cert.signatureApprovalStatus === "PENDING" ? "Approve" : "Sign"}
+                          </Button>
+                        )}
+                        {cert.signatureApprovalStatus === "SIGNED" && (
+                          <Button variant="secondary" onClick={() => handleReprint(cert.id)}>
+                            Reprint
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
-        <div className="text-gray-500 py-8 text-center bg-white rounded-lg border">
+        <div className="text-gray-500 py-8 text-center bg-white rounded-xl border border-gray-200">
           No certificates found{statusFilter ? ` with status "${statusFilter}"` : ""}.
         </div>
       )}
@@ -310,6 +313,7 @@ export default function AdminCertificatesPage() {
           </div>
         </Modal>
       )}
+      </div>
     </DashboardLayout>
   );
 }

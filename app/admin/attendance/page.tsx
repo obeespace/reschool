@@ -138,78 +138,82 @@ export default function AdminAttendancePage() {
         }
       />
 
-      {/* Filter */}
-      <div className="mb-6 flex items-center gap-4">
-        <div className="w-64">
-          <Select
-            label="Filter by Class"
-            value={selectedClass}
-            onChange={(e) => handleClassChange(e.target.value)}
-            options={classOptions}
-          />
-        </div>
-      </div>
-
-      {/* Stats */}
-      {loading ? (
-        <div className="text-gray-500 py-8 text-center">Loading attendance data…</div>
-      ) : stats ? (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            {statItems.map((item) => (
-              <div key={item.label} className="bg-white border rounded-lg p-4 shadow-sm">
-                <p className="text-sm text-gray-500 font-medium mb-1">{item.label}</p>
-                <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
-              </div>
-            ))}
+      <div className="px-4 sm:px-6 pb-6 pt-4 sm:pt-6">
+        {/* Filter */}
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="w-full sm:w-72">
+            <Select
+              label="Filter by Class"
+              value={selectedClass}
+              onChange={(e) => handleClassChange(e.target.value)}
+              options={classOptions}
+            />
           </div>
+        </div>
 
-          <div className="mt-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-3">Attendance by Date</h2>
-            {byDate.length > 0 ? (
-              <div className="bg-white rounded-lg border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b text-gray-700">
-                    <tr>
-                      {["Date", "Total", "Present", "Absent", "Late", "Excused", "Rate"].map((h) => (
-                        <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byDate.map((row) => {
-                      const rate = row.total > 0 ? Math.round((row.present / row.total) * 100) : 0;
-                      return (
-                        <tr key={row.date} className="border-b hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium">{row.date}</td>
-                          <td className="px-4 py-3 text-gray-600">{row.total}</td>
-                          <td className="px-4 py-3 text-green-600 font-semibold">{row.present}</td>
-                          <td className="px-4 py-3 text-red-600 font-semibold">{row.absent}</td>
-                          <td className="px-4 py-3 text-yellow-600 font-semibold">{row.late}</td>
-                          <td className="px-4 py-3 text-blue-600 font-semibold">{row.excused}</td>
-                          <td className="px-4 py-3">
-                            <span className={rate >= 80 ? "text-green-600 font-bold" : rate >= 60 ? "text-yellow-600 font-bold" : "text-red-600 font-bold"}>
-                              {rate}%
-                            </span>
-                          </td>
+        {/* Stats */}
+        {loading ? (
+          <div className="text-gray-500 py-8 text-center">Loading attendance data…</div>
+        ) : stats ? (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+              {statItems.map((item) => (
+                <div key={item.label} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <p className="text-sm text-gray-500 font-medium mb-1">{item.label}</p>
+                  <p className={`text-2xl font-bold ${item.color}`}>{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-3">Attendance by Date</h2>
+              {byDate.length > 0 ? (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b text-gray-700">
+                        <tr>
+                          {["Date", "Total", "Present", "Absent", "Late", "Excused", "Rate"].map((h) => (
+                            <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-gray-500 py-8 text-center bg-white rounded-lg border">
-                No attendance records found for this selection.
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {byDate.map((row) => {
+                          const rate = row.total > 0 ? Math.round((row.present / row.total) * 100) : 0;
+                          return (
+                            <tr key={row.date} className="border-b hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium">{row.date}</td>
+                              <td className="px-4 py-3 text-gray-600">{row.total}</td>
+                              <td className="px-4 py-3 text-green-600 font-semibold">{row.present}</td>
+                              <td className="px-4 py-3 text-red-600 font-semibold">{row.absent}</td>
+                              <td className="px-4 py-3 text-yellow-600 font-semibold">{row.late}</td>
+                              <td className="px-4 py-3 text-blue-600 font-semibold">{row.excused}</td>
+                              <td className="px-4 py-3">
+                                <span className={rate >= 80 ? "text-green-600 font-bold" : rate >= 60 ? "text-yellow-600 font-bold" : "text-red-600 font-bold"}>
+                                  {rate}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-gray-500 py-8 text-center bg-white rounded-xl border border-gray-200">
+                  No attendance records found for this selection.
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-gray-500 py-8 text-center bg-white rounded-xl border border-gray-200">
+            No attendance data available. Teachers need to mark attendance first.
           </div>
-        </>
-      ) : (
-        <div className="text-gray-500 py-8 text-center bg-white rounded-lg border">
-          No attendance data available. Teachers need to mark attendance first.
-        </div>
-      )}
+        )}
+      </div>
     </DashboardLayout>
   );
 }

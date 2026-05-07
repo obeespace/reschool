@@ -105,13 +105,13 @@ export default function AdminAnnouncements() {
         description="Create and manage school-wide announcements"
       />
 
-      <div className="p-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-6">
+      <div className="p-4 sm:p-6">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
             <h2 className="text-xl font-bold">All Announcements</h2>
             <button
               onClick={() => setShowCreateForm(!showCreateForm)}
-              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+              className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
             >
               {showCreateForm ? "Cancel" : "+ Create Announcement"}
             </button>
@@ -188,8 +188,8 @@ export default function AdminAnnouncements() {
               </div>
             ) : (
               announcements.map((announcement) => (
-                <div key={announcement.id} className="p-6 border-2 rounded-lg hover:shadow-md transition">
-                  <div className="flex justify-between items-start mb-3">
+                <div key={announcement.id} className="p-4 sm:p-6 border border-gray-200 rounded-xl hover:shadow-md transition">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
                     <h3 className="font-bold text-lg">{announcement.title}</h3>
                     <div className="flex gap-2">
                       <span className="text-xs px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
@@ -201,7 +201,7 @@ export default function AdminAnnouncements() {
                     </div>
                   </div>
                   <p className="text-gray-700 mb-4 whitespace-pre-wrap">{announcement.message}</p>
-                  <div className="flex justify-between items-center text-sm text-gray-500 pt-3 border-t">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-sm text-gray-500 pt-3 border-t">
                     <span>
                       Posted by: <span className="font-medium">{announcement.postedBy.name}</span> 
                       <span className="text-gray-400"> ({announcement.postedBy.role})</span>

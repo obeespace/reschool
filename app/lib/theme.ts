@@ -4,19 +4,19 @@
  */
 
 export const THEME = {
-  // Primary Colors - Indigo-based
+  // Primary Colors - Cobalt-based
   colors: {
     primary: {
-      50: '#eef2ff',
-      100: '#e0e7ff',
-      200: '#c7d2fe',
-      300: '#a5b4fc',
-      400: '#818cf8',
-      500: '#6366f1',  // Main primary
-      600: '#4f46e5',  // Hover
-      700: '#4338ca',  // Active
-      800: '#3730a3',
-      900: '#312e81',
+      50: '#eff6ff',
+      100: '#dbeafe',
+      200: '#bfdbfe',
+      300: '#93c5fd',
+      400: '#60a5fa',
+      500: '#3b82f6',
+      600: '#2563eb',
+      700: '#1d4ed8',
+      800: '#1e40af',
+      900: '#1e3a8a',
     },
     // Neutrals
     neutral: {
@@ -105,9 +105,9 @@ export const THEME = {
 
   // Typography
   typography: {
-    h1: 'text-4xl font-bold leading-tight',
-    h2: 'text-3xl font-bold leading-tight',
-    h3: 'text-2xl font-bold leading-snug',
+    h1: 'text-4xl font-extrabold leading-tight tracking-tight',
+    h2: 'text-3xl font-bold leading-tight tracking-tight',
+    h3: 'text-2xl font-bold leading-snug tracking-tight',
     h4: 'text-xl font-bold leading-snug',
     h5: 'text-lg font-semibold',
     h6: 'text-base font-semibold',
@@ -161,25 +161,25 @@ export const THEME = {
   component: {
     card: {
       backgroundColor: 'bg-white',
-      border: 'border border-gray-200',
-      borderRadius: 'rounded-xl',
-      padding: 'p-6',
-      shadow: 'shadow-sm',
-      hover: 'hover:shadow-md',
-      transition: 'transition-shadow',
+      border: 'border border-slate-200/80',
+      borderRadius: 'rounded-2xl',
+      padding: 'p-5 sm:p-6',
+      shadow: 'shadow-[0_8px_20px_-16px_rgba(15,23,42,0.32)]',
+      hover: 'hover:border-slate-300/80 hover:shadow-[0_16px_28px_-20px_rgba(15,23,42,0.4)]',
+      transition: 'transition-[box-shadow,border-color,background-color] duration-200',
     },
     button: {
-      borderRadius: 'rounded-lg',
-      fontWeight: 'font-medium',
+      borderRadius: 'rounded-xl',
+      fontWeight: 'font-semibold',
       transition: 'transition-all',
-      focus: 'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
+      focus: 'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
     },
     input: {
-      borderRadius: 'rounded-lg',
-      border: 'border border-gray-300',
+      borderRadius: 'rounded-xl',
+      border: 'border border-slate-300',
       padding: 'px-4 py-2.5',
       fontSize: 'text-sm',
-      focus: 'focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500',
+      focus: 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
     },
     modal: {
       borderRadius: 'rounded-2xl',
@@ -189,19 +189,19 @@ export const THEME = {
     sidebar: {
       width: 'w-64',
       collapsedWidth: 'w-20',
-      backgroundColor: 'bg-white',
-      border: 'border-r border-gray-200',
-      borderTop: 'border-t border-gray-200',
-      borderBottom: 'border-b border-gray-200',
-      shadow: 'shadow-sm',
+      backgroundColor: 'bg-white/95 backdrop-blur-xl',
+      border: 'border-r border-slate-200/80',
+      borderTop: 'border-t border-slate-200/80',
+      borderBottom: 'border-b border-slate-200/80',
+      shadow: 'shadow-[0_8px_24px_-16px_rgba(15,23,42,0.3)]',
     },
     table: {
-      headerBg: 'bg-gray-50',
-      headerBorder: 'border-b border-gray-200',
-      headerText: 'text-gray-600 uppercase tracking-wider',
-      bodyBorder: 'divide-y divide-gray-100',
-      rowHover: 'hover:bg-gray-50',
-      cellPadding: 'px-6 py-4',
+      headerBg: 'bg-slate-50/80',
+      headerBorder: 'border-b border-slate-200/80',
+      headerText: 'text-slate-600 uppercase tracking-[0.06em] text-xs font-semibold',
+      bodyBorder: 'divide-y divide-slate-100',
+      rowHover: 'hover:bg-slate-50/65',
+      cellPadding: 'px-4 sm:px-6 py-3.5',
     },
     badge: {
       borderRadius: 'rounded-full',
