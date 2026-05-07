@@ -7,6 +7,11 @@ import Class from "@/app/models/Class";
 import Subject from "@/app/models/Subject";
 import mongoose from "mongoose";
 
+type TeacherSubjectClassEntry = {
+  subjectId: mongoose.Types.ObjectId;
+  classIds: mongoose.Types.ObjectId[];
+};
+
 export async function GET(req: Request) {
   try {
     const token = req.headers.get("authorization")?.split(" ")[1];
@@ -49,7 +54,7 @@ export async function GET(req: Request) {
         classTeacherOf: ctClass
           ? { _id: ctId, level: ctClass.level, arm: ctClass.arm, name: `${ctClass.level} ${ctClass.arm}`.trim() }
           : null,
-        subjectsAndClasses: (profile?.subjectsAndClasses || []).map((e) => {
+        subjectsAndClasses: (profile?.subjectsAndClasses || []).map((e: TeacherSubjectClassEntry) => {
           const subj = subjectMap.get(e.subjectId.toString());
           return {
             subjectId: { _id: e.subjectId.toString(), name: subj?.name || "", code: subj?.code || "" },
