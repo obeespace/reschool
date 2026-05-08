@@ -180,7 +180,7 @@ function DashboardLayout({ role, children }: SidebarProps) {
         sidebarCollapsed ? 'lg:w-20' : 'lg:w-64',
         THEME.component.sidebar.backgroundColor,
         THEME.component.sidebar.border,
-        'min-h-screen flex flex-col transition-all duration-300',
+        'min-h-screen max-h-screen flex flex-col transition-all duration-300',
         THEME.component.sidebar.shadow,
         'z-50 lg:z-0'
       )}>

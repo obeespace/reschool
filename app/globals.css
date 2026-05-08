@@ -47,32 +47,26 @@ body {
 
 /* Sidebar nav: scrollbar hidden by default, appears only on hover */
 .sidebar-nav {
-  scrollbar-width: none; /* Firefox: hide by default */
+  scrollbar-width: auto; /* Firefox: auto width on hover */
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  display: none; /* Chrome/Safari: hide by default */
+  display: block; /* Chrome/Safari: show scrollbar */
+  width: 6px;
 }
 
-.sidebar-nav:hover {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
-}
-
-.sidebar-nav:hover::-webkit-scrollbar {
-  display: block; /* Chrome/Safari: show on hover */
-  width: 4px;
-  height: 4px;
-}
-
-.sidebar-nav:hover::-webkit-scrollbar-track {
+.sidebar-nav::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.sidebar-nav:hover::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3); /* Subtle default color */
   border-radius: 999px;
   transition: background 0.2s;
+}
+
+.sidebar-nav:hover::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* Darker on hover */
 }
 
 .sidebar-nav:hover::-webkit-scrollbar-thumb:hover {
